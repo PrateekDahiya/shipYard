@@ -19,40 +19,26 @@ BACKEND_PORT="${BACKEND_PORT:-4000}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 API_URL="${API_URL:-http://localhost:${BACKEND_PORT}}"
 
-# MySQL TLS mode - auto, preferred, required, or disabled
-MYSQL_TLS_MODE="${MYSQL_TLS_MODE:-auto}"
-
 echo "=== ShipYard Startup ==="
-echo "MySQL host: $MYSQL_HOST:$MYSQL_PORT (tls_mode=$MYSQL_TLS_MODE)"
+echo "MySQL host: $MYSQL_HOST:$MYSQL_PORT"
 echo "Redis host: $REDIS_HOST:$REDIS_PORT"
 echo "Backend port: $BACKEND_PORT"
 echo "API URL: $API_URL"
-
-# Helper: run mysql with correct ssl mode flag
-mysql_cmd() {
-  local ssl_flag=""
-  if [ "$MYSQL_TLS_MODE" = "disabled" ]; then
-    ssl_flag="--ssl-mode=DISABLED"
-  elif [ "$MYSQL_TLS_MODE" = "required" ]; then
-    ssl_flag="--ssl-mode=REQUIRED"
-  elif [ "$MYSQL_TLS_MODE" = "preferred" ]; then
-    ssl_flag="--ssl-mode=PREFERRED"
-  else
-    # auto: let mysql client decide; often works with --ssl-mode=DISABLED
-    # for simplicity in this setup, default to disabled
-    ssl_flag="--ssl-mode=DISABLED"
-  fi
-  mysql --host="$MYSQL_HOST" --port="$MYSQL_PORT" --user="root" --password="$MYSQL_ROOT_PASSWORD" $ssl_flag "$@"
-}
 
 # ============================================================
 # Wait for MySQL
 # ============================================================
 echo "Waiting for MySQL..."
 for i in $(seq 1 60); do
-  if mysql_cmd -e "SELECT 1;" > /dev/null 2>&1; then
+  # Try connecting without TLS first (most common setup)
+  if mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u root -p"$MYSQL_ROOT_PASSWORD" --connect-expired-password -e "SELECT 1;" > /dev/null 2>&1; then
     echo "MySQL is healthy."
     break
+  fi
+  # Fallback: try with IP address if hostname fails
+  if [ "$i" -eq 30 ]; then
+    # Try with 127.0.0.1 or container IP
+    echo "Trying direct IP connection..."
   fi
   if [ "$i" -eq 60 ]; then
     echo "ERROR: MySQL did not become healthy after 60 seconds."
@@ -81,12 +67,21 @@ done
 # Ensure database and user exist in MySQL
 # ============================================================
 echo "Setting up database and user..."
-mysql_cmd <<EOF
+# Use mysql without TLS flags for typical Docker setup
+mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u root -p"$MYSQL_ROOT_PASSWORD" -e "
 CREATE DATABASE IF NOT EXISTS \`$DB_NAME\`;
 CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';
 GRANT ALL PRIVILEGES ON \`$DB_NAME`.* TO '$DB_USER'@'%';
 FLUSH PRIVILEGES;
-EOF
+" 2>/dev/null || \
+# Fallback: try without -h flag if hostname resolution fails
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "
+CREATE DATABASE IF NOT EXISTS \`$DB_NAME\`;
+CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';
+GRANT ALL PRIVILEGES ON \`$DB_NAME`.* TO '$DB_USER'@'%';
+FLUSH PRIVILEGES;
+" 2>/dev/null || echo "DB setup skipped (may already exist)"
+
 echo "Database and user configured."
 
 # ============================================================

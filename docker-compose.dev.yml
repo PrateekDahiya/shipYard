@@ -15,6 +15,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    # Alias so other services can refer to it as "mysql"
+    aliases:
+      - mysql
 
   redis:
     image: redis:7-alpine
@@ -27,32 +30,27 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    # Alias so other services can refer to it as "redis"
+    aliases:
+      - redis
 
   backend:
     build: ./backend
     environment:
       PORT: 4000
-      DB_HOST: ${DB_HOST:-mysql}
+      DB_HOST: mysql
       DB_PORT: 3306
       DB_USER: ${DB_USER:-shipyard}
       DB_PASS: ${DB_PASS:-shipyard}
       DB_NAME: ${DB_NAME:-shipyard}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      FRONTEND_URL: http://localhost:3000
     ports:
       - "4000:4000"
     depends_on:
       mysql:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  worker:
-    build: ./worker
-    environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-    depends_on:
       redis:
         condition: service_healthy
 
@@ -62,6 +60,8 @@ services:
       - "3000:3000"
     depends_on:
       - backend
+    # The frontend should also become healthy once the backend is up
+    # We'll add a custom healthcheck below via label
 
   traefik:
     # NOTE: v3.0 predates the Docker 29 API and fails against it with empty
@@ -86,6 +86,24 @@ services:
     image: grafana/loki:3.0.0
     ports:
       - "3100:3100"
+
+  # Custom healthcheck for frontend - it's healthy once the backend is up
+  # and the next build has been served
+  frontend-health:
+    image: curlimages/curl:latest
+    entrypoint: /usr/bin/curl -s -o /dev/null -w "%{http_code}" http://localhost:3000
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -s http://localhost:3000/health > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    # This service depends on backend being healthy first
+    depends_on:
+      backend:
+        condition: service_healthy
+    # Shares the same network so it can curl the backend
+    networks:
+      - default
 
 volumes:
   mysql-data:

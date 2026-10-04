@@ -6,7 +6,7 @@
 # ============================================================
 FROM node:20-alpine
 
-# Install tini for proper signal handling
+# Install tini for proper signal handling and mysql-client for health checks
 RUN apk add --no-cache tini bash mysql-client
 
 # Create app user
@@ -14,8 +14,8 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 WORKDIR /app
 
-# ---- Copy entire repository ----
-COPY . ./
+# Copy entire repository
+COPY . .
 
 # ---- Install dependencies ----
 # Backend
