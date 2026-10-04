@@ -1,0 +1,82 @@
+services:
+  traefik:
+    # NOTE: v3.0 predates the Docker 29 API and fails against it with empty
+    # daemon errors — use v3 (latest) on current Docker Desktop.
+    image: traefik:v3
+    command:
+      - --api.insecure=false
+      - --providers.docker=true
+      - --entrypoints.web.address=:80
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  backend:
+    build: ./backend
+    environment:
+      PORT: 4000
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_NAME: ${DB_NAME}
+      DB_SSL: "true"
+      DB_SSL_CA_PATH: /certs/aiven-ca.pem
+      DB_ENV_KEY: ${DB_ENV_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      FRONTEND_URL: ${FRONTEND_URL}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+      SHIPYARD_BASE_DOMAIN: ${SHIPYARD_BASE_DOMAIN}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL}
+    volumes:
+      - ./certs:/certs:ro
+    depends_on:
+      - traefik
+
+  worker:
+    build: ./worker
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_NAME: ${DB_NAME}
+      DB_SSL: "true"
+      DB_SSL_CA_PATH: /certs/aiven-ca.pem
+      DB_ENV_KEY: ${DB_ENV_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      SHIPYARD_WORKDIR: /tmp/shipyard-builds
+      SHIPYARD_BASE_DOMAIN: ${SHIPYARD_BASE_DOMAIN}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./certs:/certs:ro
+    depends_on:
+      - backend
+
+  frontend:
+    build: ./frontend
+    environment:
+      NEXT_PUBLIC_API_URL: ${PUBLIC_BASE_URL}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  loki:
+    image: grafana/loki:3.0.0
+    ports:
+      - "3100:3100"
