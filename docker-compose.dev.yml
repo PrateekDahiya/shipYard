@@ -55,6 +55,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "sh", "-c", "node -e \"const net = require('net'); const client = net.connect({port: 4000}, () => { client.end(); process.exit(0); }); client.on('error', () => process.exit(1)); setTimeout(() => process.exit(1), 5000);\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   frontend:
     build: ./frontend
@@ -65,8 +71,6 @@ services:
         condition: service_healthy
 
   traefik:
-    # NOTE: v3.0 predates the Docker 29 API and fails against it with empty
-    # daemon errors — use v3 (latest) on current Docker Desktop.
     image: traefik:v3
     command:
       - --api.insecure=true
