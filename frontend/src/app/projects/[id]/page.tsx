@@ -33,6 +33,11 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
   const [latestDeployment, setLatestDeployment] = useState<{ live_url: string } | null>(null);
   const [rlWarn, setRlWarn] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showValue, setShowValue] = useState(false);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editKey, setEditKey] = useState("");
+  const [editValue, setEditValue] = useState("");
+  const [showEditValue, setShowEditValue] = useState(false);
 
   async function load() {
     // Core data — a failure here is page-level (usually auth or missing project).
@@ -79,6 +84,8 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
 
   useEffect(() => {
     load();
+    const interval = setInterval(load, 5000);
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -91,6 +98,19 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "env_failed");
+    }
+  }
+
+  async function updateEnv(oldKey: string, newKey: string, newValue: string) {
+    try {
+      if (newKey !== oldKey) {
+        await api.deleteEnv(params.id, oldKey);
+      }
+      await api.upsertEnv(params.id, { key: newKey, value: newValue, is_secret: true, scope: "both" });
+      setEditingKey(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "env_update_failed");
     }
   }
 
@@ -309,23 +329,54 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
         </div>
         <form onSubmit={saveEnv} className="mt-3 flex gap-2">
           <input className={`${inputCls} w-40 font-mono`} placeholder="KEY" value={key} onChange={(e) => setKey(e.target.value)} />
-          <input className={`${inputCls} flex-1 font-mono`} placeholder="value" type="password" value={value} onChange={(e) => setValue(e.target.value)} />
+          <input className={`${inputCls} flex-1 font-mono`} placeholder="value" type={showValue ? "text" : "password"} value={value} onChange={(e) => setValue(e.target.value)} />
+          <button type="button" className={`${btnSecondary} !py-2`} onClick={() => setShowValue(!showValue)}>
+            {showValue ? (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+            )}
+          </button>
           <button className={btnPrimary} type="submit">Save</button>
         </form>
         {showBulk && <BulkImport projectId={params.id} onDone={load} onError={setError} />}
         <ul className="mt-3 divide-y divide-gray-100 dark:divide-gray-800">
-          {env.map((v) => (
-            <li key={v.key} className="flex items-center gap-3 py-2 text-sm">
-              <span className="font-mono font-medium">{v.key}</span>
-              <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{v.value}</span>
-              <button
-                className="ml-auto text-sm text-red-600 dark:text-red-400"
-                onClick={() => api.deleteEnv(params.id, v.key).then(load).catch((e) => setError(e.message))}
-              >
-                Delete
-              </button>
-            </li>
-          ))}
+          {env.map((v) => {
+            const isEditing = editingKey === v.key;
+            return (
+              <li key={v.key} className="flex items-center gap-3 py-2 text-sm">
+                {isEditing ? (
+                  <>
+                    <input className={`${inputCls} w-40 font-mono`} value={editKey} onChange={(e) => setEditKey(e.target.value)} />
+                    <input className={`${inputCls} flex-1 font-mono`} type={showEditValue ? "text" : "password"} value={editValue} onChange={(e) => setEditValue(e.target.value)} />
+                    <button className={`${btnSecondary} !py-2`} onClick={() => setShowEditValue(!showEditValue)}>
+                      {showEditValue ? (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                      ) : (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                      )}
+                    </button>
+                    <button className={btnPrimary} onClick={() => updateEnv(v.key, editKey, editValue).then(load).catch((e) => setError(e.message))}>Save</button>
+                    <button className="text-sm text-gray-600 dark:text-gray-400" onClick={() => setEditingKey(null)}>Cancel</button>
+                  </>
+                ) : (
+                  <>
+                    <span className="font-mono font-medium">{v.key}</span>
+                    <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{showValue ? v.value : "••••••••"}</span>
+                    <button className={`${btnSecondary} !py-1`} onClick={() => setShowValue(!showValue)}>
+                      {showValue ? (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                      )}
+                    </button>
+                    <button className={`${btnSecondary} !py-1`} onClick={() => { setEditingKey(v.key); setEditKey(v.key); setEditValue(v.value); setShowEditValue(false); }}>Edit</button>
+                    <button className="text-sm text-red-600 dark:text-red-400" onClick={() => api.deleteEnv(params.id, v.key).then(load).catch((e) => setError(e.message))}>Delete</button>
+                  </>
+                )}
+              </li>
+            )}
+          )}
           {env.length === 0 && <Empty text="No variables." />}
         </ul>
       </Card>

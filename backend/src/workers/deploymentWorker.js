@@ -126,6 +126,7 @@ async function runDeployment(deploymentId, deps = {}) {
         port: deployment.app_port || project.app_port || 3000,
         deployType: project.deploy_type || 'server',
         outputDir: project.output_dir || 'build',
+        envVars: envRows,
       });
       dockerfileUsed = ensured.used;
       if (ensured.used !== 'custom') {
