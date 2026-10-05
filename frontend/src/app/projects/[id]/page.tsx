@@ -34,6 +34,7 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
   const [rlWarn, setRlWarn] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showValues, setShowValues] = useState<Record<string, boolean>>({});
+  const [actualValues, setActualValues] = useState<Record<string, string>>({});
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editKey, setEditKey] = useState("");
   const [editValue, setEditValue] = useState("");
@@ -362,8 +363,23 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
                 ) : (
                   <>
                     <span className="font-mono font-medium">{v.key}</span>
-                    <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{showValues[v.key] ? v.value : "••••••••"}</span>
-                    <button className={`${btnSecondary} !py-1`} onClick={() => setShowValues({...showValues, [v.key]: !showValues[v.key]})}>
+                    <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
+                      {showValues[v.key] ? (actualValues[v.key] || v.value || "••••••••") : "••••••••"}
+                    </span>
+                    <button className={`${btnSecondary} !py-1`} onClick={() => {
+                      if (actualValues[v.key]) {
+                        setShowValues({...showValues, [v.key]: !showValues[v.key]});
+                      } else {
+                        api.listEnv(params.id, { includeSecretValues: true }).then((res) => {
+                          const vars = res.variables?.reduce((acc, v) => {
+                            acc[v.key] = v.value;
+                            return acc;
+                          }, {} as Record<string, string>);
+                          setActualValues({...actualValues, ...vars});
+                          setShowValues({...showValues, [v.key]: true});
+                        }).catch((e) => setError(e.message));
+                      }
+                    }}>
                       {showValues[v.key] ? (
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
                       ) : (
