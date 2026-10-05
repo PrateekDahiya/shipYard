@@ -32,11 +32,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 md:flex">
-        <a href="/" className="px-2 text-lg font-bold tracking-tight">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto border-r border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 md:flex">
+        <a href="/" className="shrink-0 px-2 text-lg font-bold tracking-tight">
           Ship<span className="text-indigo-600 dark:text-indigo-400">Yard</span>
         </a>
-        <nav className="mt-6 flex flex-col gap-1">
+        <nav className="mt-6 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
           {LINKS.map((l) => (
             <a key={l.href} href={l.href} className={itemClass(l.href, path)}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={l.icon} /></svg>
@@ -44,7 +44,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             </a>
           ))}
         </nav>
-        <div className="mt-auto flex items-center gap-2 border-t border-gray-200 pt-4 dark:border-gray-800">
+        <div className="mt-4 flex shrink-0 items-center gap-2 border-t border-gray-200 pt-4 dark:border-gray-800">
           <ThemeToggle />
           {loggedIn ? (
             <button onClick={logout} className="ml-auto rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800">
@@ -58,12 +58,12 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900 md:hidden">
+        <header className="sticky top-0 z-40 flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900 md:hidden">
           <a href="/" className="font-bold">ShipYard</a>
           <a href="/projects" className="text-sm text-gray-600 dark:text-gray-300">Projects</a>
           <span className="ml-auto"><ThemeToggle /></span>
         </header>
-        <main className="mx-auto w-full max-w-5xl flex-1 p-4 sm:p-6">{children}</main>
+        <main className="mx-auto w-full min-w-0 max-w-5xl flex-1 p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );

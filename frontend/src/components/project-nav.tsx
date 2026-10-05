@@ -32,8 +32,8 @@ export default function ProjectNav({ id, active }: { id: string; active: string 
 export function ProjectLayout({ id, active, children }: { id: string; active: string; children: React.ReactNode }) {
   return (
     <div className="flex gap-6">
-      <aside className="hidden w-48 shrink-0 lg:block">
-        <div className="sticky top-6">
+      <aside className="hidden w-48 shrink-0 self-start lg:block">
+        <div className="sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto">
           <ProjectNav id={id} active={active} />
         </div>
       </aside>

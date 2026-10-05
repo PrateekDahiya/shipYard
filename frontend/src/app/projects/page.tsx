@@ -194,14 +194,14 @@ export default function Projects() {
 
       {renaming && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex overflow-y-auto bg-black/50 p-4"
           role="dialog"
           aria-modal="true"
           onClick={(e) => {
             if (e.target === e.currentTarget) setRenaming(null);
           }}
         >
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl dark:bg-gray-900 dark:border dark:border-gray-800">
+          <div className="m-auto w-full max-w-md rounded-xl bg-white p-6 shadow-xl dark:bg-gray-900 dark:border dark:border-gray-800">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               Rename project
             </h2>
