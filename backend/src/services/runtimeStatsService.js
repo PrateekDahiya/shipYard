@@ -28,11 +28,29 @@ async function runtimeStats(projectId, docker) {
     return { running: false };
   }
   const containerId = rows[0].container_id;
-  const container = docker.getContainer(containerId);
-  const [info, stat] = await Promise.all([
-    container.inspect({ size: true }),
-    container.stats({ stream: false }),
-  ]);
+  let info;
+  let stat;
+  try {
+    const container = docker.getContainer(containerId);
+    [info, stat] = await Promise.all([
+      container.inspect({ size: true }),
+      container.stats({ stream: false }),
+    ]);
+  } catch (e) {
+    // Best-effort observability: a stale RUNNING row (container pruned),
+    // an unreachable daemon, or a transient daemon error must not 500 the
+    // endpoint — degrade to not-running so callers show a clean empty state.
+    // DB failures still propagate above as real errors.
+    const log = require('../utils/logger');
+    log.warn('runtime_stats_unavailable', {
+      projectId,
+      containerId,
+      message: e && e.message,
+      statusCode: e && e.statusCode,
+      code: e && e.code,
+    });
+    return { running: false };
+  }
   const memUsage = (stat.memory_stats && stat.memory_stats.usage) || 0;
   const memLimit = (stat.memory_stats && stat.memory_stats.limit) || 0;
   const networks = stat.networks || {};
