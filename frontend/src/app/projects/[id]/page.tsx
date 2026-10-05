@@ -33,7 +33,7 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
   const [latestDeployment, setLatestDeployment] = useState<{ live_url: string } | null>(null);
   const [rlWarn, setRlWarn] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showValue, setShowValue] = useState(false);
+  const [showValues, setShowValues] = useState<Record<string, boolean>>({});
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editKey, setEditKey] = useState("");
   const [editValue, setEditValue] = useState("");
@@ -329,9 +329,9 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
         </div>
         <form onSubmit={saveEnv} className="mt-3 flex gap-2">
           <input className={`${inputCls} w-40 font-mono`} placeholder="KEY" value={key} onChange={(e) => setKey(e.target.value)} />
-          <input className={`${inputCls} flex-1 font-mono`} placeholder="value" type={showValue ? "text" : "password"} value={value} onChange={(e) => setValue(e.target.value)} />
-          <button type="button" className={`${btnSecondary} !py-2`} onClick={() => setShowValue(!showValue)}>
-            {showValue ? (
+          <input className={`${inputCls} flex-1 font-mono`} placeholder="value" type={showValues.__new__ ? "text" : "password"} value={value} onChange={(e) => setValue(e.target.value)} />
+          <button type="button" className={`${btnSecondary} !py-2`} onClick={() => setShowValues({...showValues, __new__: !showValues.__new__})}>
+            {showValues.__new__ ? (
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
             ) : (
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
@@ -362,9 +362,9 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
                 ) : (
                   <>
                     <span className="font-mono font-medium">{v.key}</span>
-                    <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{showValue ? v.value : "••••••••"}</span>
-                    <button className={`${btnSecondary} !py-1`} onClick={() => setShowValue(!showValue)}>
-                      {showValue ? (
+                    <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{showValues[v.key] ? v.value : "••••••••"}</span>
+                    <button className={`${btnSecondary} !py-1`} onClick={() => setShowValues({...showValues, [v.key]: !showValues[v.key]})}>
+                      {showValues[v.key] ? (
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
                       ) : (
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
