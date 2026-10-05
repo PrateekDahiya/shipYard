@@ -1,6 +1,7 @@
 services:
   mysql:
     image: mysql:8.4
+    mem_limit: 1g
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
       MYSQL_DATABASE: ${DB_NAME:-shipyard}
@@ -22,6 +23,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    mem_limit: 1g
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -38,6 +40,7 @@ services:
 
   backend:
     build: ./backend
+    mem_limit: 1g
     environment:
       PORT: 4000
       DB_HOST: ${DB_HOST:-mysql}
@@ -70,6 +73,7 @@ services:
 
   worker:
     build: ./worker
+    mem_limit: 1g
     environment:
       DB_HOST: ${DB_HOST:-mysql}
       DB_PORT: ${DB_PORT:-3306}
@@ -103,6 +107,7 @@ services:
 
   frontend:
     build: ./frontend
+    mem_limit: 1g
     ports:
       - "3000:3000"
     depends_on:
@@ -111,6 +116,7 @@ services:
 
   traefik:
     image: traefik:v3
+    mem_limit: 1g
     command:
       - --api.insecure=true
       - --providers.docker=true
@@ -123,11 +129,13 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.53.0
+    mem_limit: 1g
     ports:
       - "9090:9090"
 
   loki:
     image: grafana/loki:3.0.0
+    mem_limit: 1g
     ports:
       - "3100:3100"
 

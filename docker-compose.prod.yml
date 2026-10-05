@@ -3,6 +3,7 @@ services:
     # NOTE: v3.0 predates the Docker 29 API and fails against it with empty
     # daemon errors — use v3 (latest) on current Docker Desktop.
     image: traefik:v3
+    mem_limit: 1g
     command:
       - --api.insecure=false
       - --providers.docker=true
@@ -14,6 +15,7 @@ services:
 
   backend:
     build: ./backend
+    mem_limit: 1g
     environment:
       PORT: 4000
       DB_HOST: ${DB_HOST}
@@ -40,6 +42,7 @@ services:
 
   worker:
     build: ./worker
+    mem_limit: 1g
     environment:
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT:-3306}
@@ -62,6 +65,7 @@ services:
 
   frontend:
     build: ./frontend
+    mem_limit: 1g
     environment:
       NEXT_PUBLIC_API_URL: ${PUBLIC_BASE_URL}
     ports:
@@ -71,6 +75,7 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.53.0
+    mem_limit: 1g
     ports:
       - "9090:9090"
     volumes:
@@ -78,5 +83,6 @@ services:
 
   loki:
     image: grafana/loki:3.0.0
+    mem_limit: 1g
     ports:
       - "3100:3100"
