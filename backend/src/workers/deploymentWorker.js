@@ -178,11 +178,21 @@ async function runDeployment(deploymentId, deps = {}) {
     const serviceName = `shipyard-p${project.id}`;
     // Static sites are always served on nginx :80; servers use configured port.
     const appPort = isStatic ? 80 : deployment.app_port || project.app_port || 3000;
+    // Build args for Docker build (only for generated images, not custom Dockerfiles)
+    const buildArgs = {};
+    if (dockerfileUsed !== 'custom') {
+      for (const r of envRows) {
+        if (r.scope === 'build' || r.scope === 'both') {
+          buildArgs[r.key] = r.value;
+        }
+      }
+    }
     try {
       await docker.buildImage({
         tag,
         contextDir: dir,
         onProgress: (line) => deploymentRepo.appendLog(deploymentId, 'image', 'stdout', line),
+        buildArgs,
       });
     } catch (e) {
       await deploymentRepo.appendLog(deploymentId, 'image', 'stderr', String(e.message || e).slice(-2000));

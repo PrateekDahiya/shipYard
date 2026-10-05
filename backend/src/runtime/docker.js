@@ -70,7 +70,7 @@ function buildErrorOf(output) {
   return new Error(String(failed.error || detail || 'docker build failed'));
 }
 
-async function buildImage({ tag, contextDir, dockerfile = 'Dockerfile', onProgress }) {
+async function buildImage({ tag, contextDir, dockerfile = 'Dockerfile', onProgress, buildArgs }) {
   // Pack the whole build context (minus heavy/secret-prone dirs). An allowlist
   // of filenames breaks real apps that lack e.g. package-lock.json; full
   // .dockerignore semantics are a documented hardening follow-up.
@@ -79,7 +79,7 @@ async function buildImage({ tag, contextDir, dockerfile = 'Dockerfile', onProgre
   const pack = tar.pack(contextDir, {
     ignore: (name) => String(name).split(/[\\/]/).some((part) => skip.has(part)),
   });
-  const stream = await getClient().buildImage(pack, { t: tag, dockerfile, rm: true, forcerm: true });
+  const stream = await getClient().buildImage(pack, { t: tag, dockerfile, rm: true, forcerm: true, buildargs: buildArgs });
   return new Promise((resolve, reject) => {
     getClient().modem.followProgress(
       stream,
