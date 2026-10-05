@@ -14,8 +14,14 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 WORKDIR /app
 
-# Copy entire repository
-COPY . .
+# ---- Copy entire repository explicitly ----
+COPY backend ./backend
+COPY frontend ./frontend
+COPY docker-compose.dev.yml ./docker-compose.dev.yml
+COPY docker-compose.prod.yml ./docker-compose.prod.yml
+COPY start-local.ps1 ./start-local.ps1
+COPY start-shipyard.sh ./start-shipyard.sh
+COPY .env.example ./.env.example
 
 # ---- Install dependencies ----
 # Backend

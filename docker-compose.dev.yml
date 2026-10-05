@@ -40,13 +40,17 @@ services:
     build: ./backend
     environment:
       PORT: 4000
-      DB_HOST: mysql
-      DB_PORT: 3306
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
       DB_USER: ${DB_USER:-shipyard}
       DB_PASS: ${DB_PASS:-shipyard}
       DB_NAME: ${DB_NAME:-shipyard}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      DB_SSL: ${DB_SSL:-false}
+      DB_SSL_CA_PATH: ${DB_SSL_CA_PATH:-}
+      DB_ENV_KEY: ${DB_ENV_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
       FRONTEND_URL: http://localhost:3000
     ports:
       - "4000:4000"
@@ -61,6 +65,36 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    volumes:
+      - ./certs:/certs:ro
+
+  worker:
+    build: ./worker
+    environment:
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER:-shipyard}
+      DB_PASS: ${DB_PASS:-shipyard}
+      DB_NAME: ${DB_NAME:-shipyard}
+      DB_SSL: ${DB_SSL:-false}
+      DB_SSL_CA_PATH: ${DB_SSL_CA_PATH:-}
+      DB_ENV_KEY: ${DB_ENV_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      SHIPYARD_WORKDIR: /tmp/shipyard-builds
+      SHIPYARD_BASE_DOMAIN: ${SHIPYARD_BASE_DOMAIN:-shipyard.localhost}
+    volumes:
+      # worker/src/index.js requires backend code + backend node_modules
+      # at /backend (all pure-JS deps, safe to bind-mount)
+      - ./backend:/backend:ro
+      - ./certs:/certs:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
 
   frontend:
     build: ./frontend
