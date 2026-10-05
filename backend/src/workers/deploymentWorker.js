@@ -233,9 +233,13 @@ async function runDeployment(deploymentId, deps = {}) {
     if (mappedPort) {
       await getPool().query('UPDATE application_instances SET host_port = ? WHERE deployment_id = ?', [mappedPort, deploymentId]);
     }
+    // The worker may itself run in a container (compose), where `localhost`
+    // is the worker — not the Docker host publishing the ephemeral port.
+    // SHIPYARD_PROBE_HOST overrides the probe host (e.g. host.docker.internal).
+    const probeHost = process.env.SHIPYARD_PROBE_HOST || 'localhost';
     const probeUrl = deps.probeUrlFor
       ? await deps.probeUrlFor(newContainerId, probeHostPort, healthPath)
-      : `http://localhost:${probeHostPort}${healthPath}`;
+      : `http://${probeHost}:${probeHostPort}${healthPath}`;
     const result = await health.waitHealthy(probeUrl, {
       timeoutMs: (project.healthcheck_timeout || 10) * 1000,
       expectedStatus: 200,

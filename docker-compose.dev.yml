@@ -84,6 +84,11 @@ services:
       REDIS_PORT: ${REDIS_PORT:-6379}
       SHIPYARD_WORKDIR: /tmp/shipyard-builds
       SHIPYARD_BASE_DOMAIN: ${SHIPYARD_BASE_DOMAIN:-shipyard.localhost}
+      # Worker runs in a container: probe the host-published port via the
+      # Docker host, not localhost (which would be the worker itself).
+      SHIPYARD_PROBE_HOST: host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       # worker/src/index.js requires backend code + backend node_modules
       # at /backend (all pure-JS deps, safe to bind-mount)
