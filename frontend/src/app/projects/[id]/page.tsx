@@ -12,6 +12,7 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
+  const [projectName, setProjectName] = useState("");
   const [branch, setBranch] = useState("");
   const [autoDeploy, setAutoDeploy] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
@@ -45,6 +46,7 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
     try {
       const p = await api.getProject(params.id);
       setProject(p.project);
+      setProjectName(p.project.name);
       setBranch(p.project.branch);
       setAutoDeploy(!!p.project.auto_deploy);
       setRepoUrl(p.project.repository_url || "");
@@ -112,6 +114,20 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "env_update_failed");
+    }
+  }
+
+  async function saveName() {
+    const trimmed = projectName.trim();
+    if (!trimmed) {
+      setError("Project name is required.");
+      return;
+    }
+    try {
+      await api.patchProject(params.id, { name: trimmed });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "save_failed");
     }
   }
 
@@ -224,6 +240,25 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
 
       {tab === "overview" && (
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card>
+          <h2 className="font-semibold">General</h2>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Rename the project. URLs and deploys keep working.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <input
+              className={`${inputCls} flex-1 font-mono`}
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              placeholder="my-api"
+              maxLength={100}
+            />
+            <button className={btnPrimary} onClick={saveName}>
+              Save name
+            </button>
+          </div>
+        </Card>
+
         <Card>
           <h2 className="font-semibold">Branch & auto-deploy</h2>
           <div className="mt-3 flex gap-2">
