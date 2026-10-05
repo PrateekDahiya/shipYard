@@ -129,8 +129,10 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
-  listEnv: (id: string) =>
-    req<{ variables: EnvVar[] }>(`/api/projects/${id}/env`),
+  listEnv: (id: string, options?: { includeSecretValues?: boolean }) =>
+    req<{ variables: EnvVar[] }>(
+      `/api/projects/${id}/env${options?.includeSecretValues ? '?includeSecretValues=true' : ''}`
+    ),
   upsertEnv: (id: string, v: { key: string; value: string; is_secret?: boolean; scope?: string }) =>
     req<{ variable: EnvVar }>(`/api/projects/${id}/env`, {
       method: "POST",
