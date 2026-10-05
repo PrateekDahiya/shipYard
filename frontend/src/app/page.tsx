@@ -12,6 +12,11 @@ export default function Home() {
 
   useEffect(() => {
     api.overview().then(setData).catch((e) => setError(e.message));
+    const interval = setInterval(() => {
+      api.overview().then(setData).catch((e) => setError(e.message));
+    }, 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (error === "unauthorized") {
