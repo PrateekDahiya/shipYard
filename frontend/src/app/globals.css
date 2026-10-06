@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  /* Reserve space for the vertical scrollbar on every page so switching
+     between short (no-scroll) and tall (scroll) pages doesn't shift layout. */
+  scrollbar-gutter: stable;
+}
+
 :root {
   color-scheme: light;
 }
