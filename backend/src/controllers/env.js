@@ -5,7 +5,8 @@ const auditRepo = require('../repositories/auditRepo');
 
 async function list(req, res, next) {
   try {
-    const variables = await envRepo.list(req.project.id);
+    const { includeSecretValues } = req.query;
+    const variables = await envRepo.list(req.project.id, { includeSecretValues: includeSecretValues !== 'false' });
     res.status(200).json({ variables, requestId: req.id });
   } catch (e) {
     next(e);

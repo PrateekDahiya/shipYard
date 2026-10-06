@@ -25,6 +25,7 @@ router.get('/overview', async (req, res, next) => {
 router.get('/projects/:id/metrics', requireProjectAccess, controller.metrics);
 router.get('/projects/:id/metrics/series', requireProjectAccess, controller.series);
 router.get('/projects/:id/runtime', requireProjectAccess, controller.runtime);
+router.get('/projects/:id/container-logs', requireProjectAccess, controller.containerLogs);
 router.get('/projects/:id/requests', requireProjectAccess, controller.requests);
 router.get('/projects/:id/rate-limit', requireProjectAccess, controller.getRateLimit);
 router.put('/projects/:id/rate-limit', requireProjectAccess, controller.putRateLimit);

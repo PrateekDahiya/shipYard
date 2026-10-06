@@ -129,8 +129,10 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
-  listEnv: (id: string) =>
-    req<{ variables: EnvVar[] }>(`/api/projects/${id}/env`),
+  listEnv: (id: string, options?: { includeSecretValues?: boolean }) =>
+    req<{ variables: EnvVar[] }>(
+      `/api/projects/${id}/env${options?.includeSecretValues ? '?includeSecretValues=true' : ''}`
+    ),
   upsertEnv: (id: string, v: { key: string; value: string; is_secret?: boolean; scope?: string }) =>
     req<{ variable: EnvVar }>(`/api/projects/${id}/env`, {
       method: "POST",
@@ -211,4 +213,6 @@ export const api = {
     req<{ points: { bucket: string; status: string; n: number }[] }>(`/api/projects/${id}/metrics/series?type=deployments&days=${days}`),
   runtime: (id: string) =>
     req<{ runtime: { running: boolean; cpuPercent?: number; memoryBytes?: number; memoryLimitBytes?: number; diskWritableBytes?: number; netRxBytes?: number; netTxBytes?: number } }>(`/api/projects/${id}/runtime`),
+  containerLogs: (id: string, tail = 200) =>
+    req<{ running: boolean; deploymentId?: number; container?: string; lines?: string[] }>(`/api/projects/${id}/container-logs?tail=${tail}`),
 };

@@ -17,7 +17,7 @@ export default function Metrics({ params }: { params: { id: string } }) {
   useEffect(() => {
     api.projectMetrics(params.id).then(setData).catch((e) => setError(e.message));
     api.requestSeries(params.id, 24).then((r) => setSeries(r.points)).catch(() => {});
-    api.runtime(params.id).then((r) => setRuntime(r.runtime)).catch(() => {});
+    api.runtime(params.id).then((r) => setRuntime(r.runtime)).catch(() => setRuntime({ running: false }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

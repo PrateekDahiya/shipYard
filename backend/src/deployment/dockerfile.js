@@ -73,15 +73,27 @@ function generate({ stack, buildCommand, runCommand, port }) {
 // Returns { used: 'custom' } or writes a generated Dockerfile and returns
 // { used: 'generated', stack }. Throws no_dockerfile_no_detected_stack when
 // neither a Dockerfile nor a known stack exists.
-function ensure(contextDir, { buildCommand, runCommand, port, deployType, outputDir }) {
+function ensure(contextDir, { buildCommand, runCommand, port, deployType, outputDir, envVars = [] }) {
   const stack = detectStack(contextDir);
   if (stack === 'custom') {
     return { used: 'custom', stack };
   }
   if (deployType === 'static') {
     const hasPackageJson = fs.existsSync(path.join(contextDir, 'package.json'));
-    const content = generateStatic({ hasPackageJson, buildCommand, outputDir: outputDir || 'build' });
-    fs.writeFileSync(path.join(contextDir, 'Dockerfile'), content);
+    const staticContent = generateStatic({ hasPackageJson, buildCommand, outputDir: outputDir || 'build' });
+    // Build args for static site: inject ALL build-time env vars (scope 'build' or 'both')
+    const buildArgs = {};
+    for (const r of envVars) {
+      if (r.scope === 'build' || r.scope === 'both') {
+        buildArgs[r.key] = r.value;
+      }
+    }
+    const buildArgLines = getStaticBuildArgs(buildArgs);
+    const finalContent = staticContent.replace(
+      'FROM node:20-alpine AS build',
+      ['FROM node:20-alpine AS build', ...buildArgLines].join('\n')
+    );
+    fs.writeFileSync(path.join(contextDir, 'Dockerfile'), finalContent);
     return { used: 'generated-static', stack: hasPackageJson ? stack : 'static' };
   }
   if (stack === 'unknown') {
@@ -131,6 +143,17 @@ function generateStatic({ hasPackageJson, buildCommand, outputDir }) {
       'CMD ["nginx", "-g", "daemon off;"]',
     ]).join('\n') + '\n'
   );
+}
+
+// Build args for static site Dockerfile - injects ALL build-time env vars dynamically
+function getStaticBuildArgs(buildArgs = {}) {
+  const lines = [];
+  for (const key of Object.keys(buildArgs)) {
+    const safeKey = key.replace(/[^a-zA-Z0-9_]/g, '_');
+    lines.push(`ARG ${safeKey}`);
+    lines.push(`ENV ${safeKey}=\${${safeKey}}`);
+  }
+  return lines;
 }
 
 module.exports = { detectStack, generate, generateStatic, ensure };

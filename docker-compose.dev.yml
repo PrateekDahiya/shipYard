@@ -1,23 +1,7 @@
 services:
-  mysql:
-    image: mysql:8.4
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
-      MYSQL_DATABASE: ${DB_NAME:-shipyard}
-      MYSQL_USER: ${DB_USER:-shipyard}
-      MYSQL_PASSWORD: ${DB_PASS:-shipyard}
-    ports:
-      - "${DB_PORT:-3306}:3306"
-    volumes:
-      - mysql-data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   redis:
     image: redis:7-alpine
+    mem_limit: 1g
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -27,46 +11,91 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      default:
+        aliases:
+          - redis
 
   backend:
     build: ./backend
+    mem_limit: 1g
     environment:
       PORT: 4000
       DB_HOST: ${DB_HOST:-mysql}
-      DB_PORT: 3306
+      DB_PORT: ${DB_PORT:-3306}
       DB_USER: ${DB_USER:-shipyard}
       DB_PASS: ${DB_PASS:-shipyard}
       DB_NAME: ${DB_NAME:-shipyard}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      DB_SSL: ${DB_SSL:-false}
+      DB_SSL_CA_PATH: ${DB_SSL_CA_PATH:-}
+      DB_ENV_KEY: ${DB_ENV_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      FRONTEND_URL: http://localhost:3000
     ports:
       - "4000:4000"
     depends_on:
-      mysql:
-        condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "sh", "-c", "node -e \"const net = require('net'); const client = net.connect({port: 4000}, () => { client.end(); process.exit(0); }); client.on('error', () => process.exit(1)); setTimeout(() => process.exit(1), 5000);\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - ./certs:/certs:ro
+      # Read-only daemon access for live container stats + logs endpoints.
+      # The worker keeps the read-write mount (it creates containers).
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 
   worker:
     build: ./worker
+    mem_limit: 1g
     environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER:-shipyard}
+      DB_PASS: ${DB_PASS:-shipyard}
+      DB_NAME: ${DB_NAME:-shipyard}
+      DB_SSL: ${DB_SSL:-false}
+      DB_SSL_CA_PATH: ${DB_SSL_CA_PATH:-}
+      DB_ENV_KEY: ${DB_ENV_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      SHIPYARD_WORKDIR: /tmp/shipyard-builds
+      SHIPYARD_BASE_DOMAIN: ${SHIPYARD_BASE_DOMAIN:-shipyard.localhost}
+      # Worker runs in a container: probe the host-published port via the
+      # Docker host, not localhost (which would be the worker itself).
+      SHIPYARD_PROBE_HOST: host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # worker/src/index.js requires backend code + backend node_modules
+      # at /backend (all pure-JS deps, safe to bind-mount)
+      - ./backend:/backend:ro
+      - ./certs:/certs:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       redis:
+        condition: service_healthy
+      backend:
         condition: service_healthy
 
   frontend:
     build: ./frontend
+    mem_limit: 1g
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
   traefik:
-    # NOTE: v3.0 predates the Docker 29 API and fails against it with empty
-    # daemon errors — use v3 (latest) on current Docker Desktop.
     image: traefik:v3
+    mem_limit: 1g
     command:
       - --api.insecure=true
       - --providers.docker=true
@@ -77,16 +106,5 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
-  prometheus:
-    image: prom/prometheus:v2.53.0
-    ports:
-      - "9090:9090"
-
-  loki:
-    image: grafana/loki:3.0.0
-    ports:
-      - "3100:3100"
-
 volumes:
-  mysql-data:
   redis-data:

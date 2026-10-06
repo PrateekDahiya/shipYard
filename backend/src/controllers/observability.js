@@ -59,6 +59,17 @@ async function runtime(req, res, next) {
   }
 }
 
+async function containerLogs(req, res, next) {
+  try {
+    const docker = require('../runtime/docker');
+    const instanceService = require('../services/instanceService');
+    const result = await instanceService.containerLogs(req.project.id, docker, req.query.tail);
+    res.status(200).json({ ...result, requestId: req.id });
+  } catch (e) {
+    next(e);
+  }
+}
+
 async function getRateLimit(req, res, next) {
   try {
     const cfg = await getConfig(req.project.id);
@@ -85,4 +96,4 @@ async function putRateLimit(req, res, next) {
   }
 }
 
-module.exports = { metrics, requests, series, runtime, getRateLimit, putRateLimit };
+module.exports = { metrics, requests, series, runtime, containerLogs, getRateLimit, putRateLimit };
