@@ -1,15 +1,19 @@
 #!/bin/sh
 # ============================================================
 # ShipYard Startup Script (for Docker runtime)
-# Waits for dependencies, runs migrations, starts services
-# This is called as the container's CMD
+# Waits for dependencies, runs migrations, starts services.
+# This is called as the container's CMD (root all-in-one image).
+#
+# MySQL is EXTERNAL (e.g. Aiven) — this script never creates users or
+# databases (managed instances forbid it). It only waits for the DB to
+# accept the app credentials, runs `npm run db:migrate`, then starts
+# backend + frontend.
 # ============================================================
 set -e
 
-# defaults - can be overridden via -e when running the container
-MYSQL_HOST="${MYSQL_HOST:-mysql}"
-MYSQL_PORT="${MYSQL_PORT:-3306}"
-MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-root}"
+# DB_* preferred; MYSQL_* kept as fallback for older env files.
+DB_HOST="${DB_HOST:-${MYSQL_HOST:-localhost}}"
+DB_PORT="${DB_PORT:-${MYSQL_PORT:-3306}}"
 DB_NAME="${DB_NAME:-shipyard}"
 DB_USER="${DB_USER:-shipyard}"
 DB_PASS="${DB_PASS:-shipyard}"
@@ -20,25 +24,28 @@ FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 API_URL="${API_URL:-http://localhost:${BACKEND_PORT}}"
 
 echo "=== ShipYard Startup ==="
-echo "MySQL host: $MYSQL_HOST:$MYSQL_PORT"
+echo "DB host: $DB_HOST:$DB_PORT (database: $DB_NAME, user: $DB_USER)"
 echo "Redis host: $REDIS_HOST:$REDIS_PORT"
 echo "Backend port: $BACKEND_PORT"
 echo "API URL: $API_URL"
 
+if [ "${JWT_SECRET:-}" = "" ] || [ "$JWT_SECRET" = "shipyard-jwt-secret-must-change" ]; then
+  echo "WARNING: JWT_SECRET is unset or still the placeholder — set a real secret."
+fi
+if [ "${DB_ENV_KEY:-}" = "" ] || [ "$DB_ENV_KEY" = "shipyard-db-key-must-change" ]; then
+  echo "WARNING: DB_ENV_KEY is unset or still the placeholder — env secrets cannot be encrypted."
+fi
+
 # ============================================================
-# Wait for MySQL
+# Wait for MySQL (app credentials, no root needed)
 # ============================================================
 echo "Waiting for MySQL..."
 for i in $(seq 1 60); do
-  # Try connecting without TLS first (most common setup)
-  if mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u root -p"$MYSQL_ROOT_PASSWORD" --connect-expired-password -e "SELECT 1;" > /dev/null 2>&1; then
+  # No --ssl-mode flag: the client negotiates TLS when the server requires
+  # it (Aiven) and skips it for plain local servers.
+  if mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "SELECT 1;" > /dev/null 2>&1; then
     echo "MySQL is healthy."
     break
-  fi
-  # Fallback: try with IP address if hostname fails
-  if [ "$i" -eq 30 ]; then
-    # Try with 127.0.0.1 or container IP
-    echo "Trying direct IP connection..."
   fi
   if [ "$i" -eq 60 ]; then
     echo "ERROR: MySQL did not become healthy after 60 seconds."
@@ -48,11 +55,11 @@ for i in $(seq 1 60); do
 done
 
 # ============================================================
-# Wait for Redis
+# Wait for Redis (bash TCP probe — this image has no redis-cli)
 # ============================================================
 echo "Waiting for Redis..."
 for i in $(seq 1 30); do
-  if redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" ping > /dev/null 2>&1; then
+  if (echo > /dev/tcp/"$REDIS_HOST"/"$REDIS_PORT") > /dev/null 2>&1; then
     echo "Redis is healthy."
     break
   fi
@@ -64,35 +71,14 @@ for i in $(seq 1 30); do
 done
 
 # ============================================================
-# Ensure database and user exist in MySQL
+# Run Backend Migrations
 # ============================================================
-echo "Setting up database and user..."
-# Use mysql without TLS flags for typical Docker setup
-mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u root -p"$MYSQL_ROOT_PASSWORD" -e "
-CREATE DATABASE IF NOT EXISTS \`$DB_NAME\`;
-CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';
-GRANT ALL PRIVILEGES ON \`$DB_NAME`.* TO '$DB_USER'@'%';
-FLUSH PRIVILEGES;
-" 2>/dev/null || \
-# Fallback: try without -h flag if hostname resolution fails
-mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "
-CREATE DATABASE IF NOT EXISTS \`$DB_NAME\`;
-CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';
-GRANT ALL PRIVILEGES ON \`$DB_NAME`.* TO '$DB_USER'@'%';
-FLUSH PRIVILEGES;
-" 2>/dev/null || echo "DB setup skipped (may already exist)"
-
-echo "Database and user configured."
-
-# ============================================================
-# Run Backend Migrations / Setup
-# ============================================================
-echo "Running backend setup..."
+echo "Running backend migrations..."
 cd /app/backend
-if [ -f "package.json" ] && grep -q '"migrate"' package.json; then
-  npm run migrate 2>/dev/null || echo "Migration script not found, skipping."
+if [ -f "package.json" ] && grep -q '"db:migrate"' package.json; then
+  npm run db:migrate
 else
-  echo "No migration tool detected; assuming migrations already applied."
+  echo "No db:migrate script detected; assuming migrations already applied."
 fi
 
 # ============================================================
@@ -102,11 +88,13 @@ echo "Starting backend on port $BACKEND_PORT..."
 cd /app/backend
 NODE_ENV="${NODE_ENV:-production}"
 export PORT="$BACKEND_PORT"
-export DB_HOST="$MYSQL_HOST"
-export DB_PORT="$MYSQL_PORT"
+export DB_HOST="$DB_HOST"
+export DB_PORT="$DB_PORT"
 export DB_USER="$DB_USER"
 export DB_PASS="$DB_PASS"
 export DB_NAME="$DB_NAME"
+export DB_SSL="${DB_SSL:-false}"
+export DB_SSL_CA_PATH="${DB_SSL_CA_PATH:-}"
 export REDIS_HOST="$REDIS_HOST"
 export REDIS_PORT="$REDIS_PORT"
 export API_URL="${API_URL}"

@@ -1,8 +1,8 @@
 # ============================================================
 # ShipYard — Production Dockerfile
 # Complete setup on server: builds & runs backend + frontend.
-# MySQL, Redis, and Traefik must be available as Docker services
-# on the same network, or running on the host.
+# MySQL is external (e.g. Aiven). Redis and Traefik must be available
+# as Docker services on the same network, or running on the host.
 # ============================================================
 FROM node:20-alpine
 
@@ -41,8 +41,8 @@ RUN npm run build --prefix frontend 2>/dev/null || echo "Frontend build skipped"
 
 # ---- Runtime configuration ----
 # Environment variables are expected to be provided at container start:
-#   - MYSQL_HOST, MYSQL_PORT, MYSQL_ROOT_PASSWORD
-#   - DB_NAME, DB_USER, DB_PASS
+#   - DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS (+ DB_SSL=true and
+#     DB_SSL_CA_PATH for managed MySQL like Aiven)
 #   - REDIS_HOST, REDIS_PORT
 #   - JWT_SECRET, DB_ENV_KEY
 #   - FRONTEND_PORT, BACKEND_PORT

@@ -13,6 +13,10 @@ Docs: `docs/API.md`, `docs/OPERATIONS.md`, `docs/DEPLOYMENT.md`, `docs/TESTING.m
 Prerequisites: Docker Desktop, Node 20+. MySQL is external (Aiven) — the compose
 stack no longer ships a database container. Redis still runs locally.
 
+Pick exactly one runtime — the compose stack **or** `start-local.ps1`, never both
+(they bind the same ports and will fight; the script refuses to start on top
+of a running compose stack).
+
 Easiest (Windows, keeps windows open so you can browse progress):
 
 ```powershell

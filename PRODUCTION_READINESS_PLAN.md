@@ -1,4 +1,10 @@
 # ShipYard Production Readiness Plan
+> **Historical snapshot** (pinned to commit `108f425`). The topology below is
+> outdated: there is no local `mysql` service anymore (MySQL is external, e.g.
+> Aiven), `loki` and the dev `prometheus` service were removed, `MYSQL_TLS_MODE`
+> no longer exists, and `backend` also mounts the Docker socket (read-only).
+> For the current setup see `README.md` and `docs/DEPLOYMENT.md`.
+
 ## Using Local Machine (Docker + Redis + MySQL + Traefik)
 
 **Branch**: `production-readiness`
