@@ -37,6 +37,8 @@ services:
       GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL}
     volumes:
       - ./certs:/certs:ro
+      # Read-only daemon access for live container stats + logs endpoints.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       - traefik
 
@@ -81,8 +83,4 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
-  loki:
-    image: grafana/loki:3.0.0
-    mem_limit: 1g
-    ports:
-      - "3100:3100"
+

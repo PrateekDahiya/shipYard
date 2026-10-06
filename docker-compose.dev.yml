@@ -1,26 +1,4 @@
 services:
-  mysql:
-    image: mysql:8.4
-    mem_limit: 1g
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
-      MYSQL_DATABASE: ${DB_NAME:-shipyard}
-      MYSQL_USER: ${DB_USER:-shipyard}
-      MYSQL_PASSWORD: ${DB_PASS:-shipyard}
-    ports:
-      - "${DB_PORT:-3306}:3306"
-    volumes:
-      - mysql-data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      default:
-        aliases:
-          - mysql
-
   redis:
     image: redis:7-alpine
     mem_limit: 1g
@@ -58,8 +36,6 @@ services:
     ports:
       - "4000:4000"
     depends_on:
-      mysql:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -70,6 +46,9 @@ services:
       start_period: 40s
     volumes:
       - ./certs:/certs:ro
+      # Read-only daemon access for live container stats + logs endpoints.
+      # The worker keeps the read-write mount (it creates containers).
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 
   worker:
     build: ./worker
@@ -127,18 +106,5 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
-  prometheus:
-    image: prom/prometheus:v2.53.0
-    mem_limit: 1g
-    ports:
-      - "9090:9090"
-
-  loki:
-    image: grafana/loki:3.0.0
-    mem_limit: 1g
-    ports:
-      - "3100:3100"
-
 volumes:
-  mysql-data:
   redis-data:
