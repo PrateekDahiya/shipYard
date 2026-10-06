@@ -15,6 +15,43 @@ async function currentInstance(projectId) {
   return rows[0] || null;
 }
 
+// Live stdout/stderr of the project's current RUNNING instance, newest last.
+// Best-effort observability like runtime stats: Docker-side failures degrade
+// to { running: false } instead of 500ing; DB failures still propagate.
+async function containerLogs(projectId, docker, tail = 200) {
+  const inst = await currentInstance(projectId);
+  if (!inst) {
+    return { running: false };
+  }
+  const safeTail = Math.min(Math.max(parseInt(tail, 10) || 200, 1), 1000);
+  const shortId = String(inst.container_id).slice(0, 12);
+  let text;
+  try {
+    text = await docker.containerLogsText(inst.container_id, { tail: safeTail });
+  } catch (e) {
+    require('../utils/logger').warn('container_logs_unavailable', {
+      projectId,
+      containerId: shortId,
+      message: e && e.message,
+      statusCode: e && e.statusCode,
+      code: e && e.code,
+    });
+    return { running: false };
+  }
+  const lines = [];
+  for (const [stream, body] of [['stdout', text.stdout], ['stderr', text.stderr]]) {
+    for (const line of String(body || '').split('\n').filter((l) => l.length > 0).slice(-safeTail)) {
+      lines.push(`[container/${stream}] ${line.slice(0, 4000)}`);
+    }
+  }
+  return {
+    running: true,
+    deploymentId: inst.deployment_id,
+    container: shortId,
+    lines: lines.slice(-safeTail * 2),
+  };
+}
+
 // Best-effort teardown of every live container of a project (used when a
 // project is deleted so containers cannot be orphaned). Never throws.
 async function stopAllForProject(projectId, docker) {
@@ -91,4 +128,4 @@ async function start(userId, projectId, docker) {
   return { started: true, containerId: cid, hostPort };
 }
 
-module.exports = { currentInstance, stop, start, stopAllForProject };
+module.exports = { currentInstance, stop, start, stopAllForProject, containerLogs };

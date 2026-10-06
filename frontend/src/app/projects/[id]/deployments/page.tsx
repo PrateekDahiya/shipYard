@@ -108,7 +108,12 @@ export default function Deployments({ params }: { params: { id: string } }) {
   ];
 
   return (
-    <ProjectLayout id={params.id} active="deployments">
+    <ProjectLayout
+      id={params.id}
+      active="deployments"
+      deployments={deployments}
+      currentLiveId={deployments.find((d) => d.status === "SUCCESS" || d.status === "RUNNING")?.id ?? null}
+    >
     <div>
       <PageHeader
         title="Deployments"

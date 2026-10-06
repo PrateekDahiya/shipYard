@@ -146,9 +146,77 @@ async function stopAndRemove(containerId, { timeoutSeconds = 10 } = {}) {
 }
 
 async function containerLogs(containerId, { tail = 200 } = {}) {
+  const { stdout, stderr } = await containerLogsText(containerId, { tail });
+  return stdout + stderr;
+}
+
+// Parse a Docker multiplexed log payload: each frame is an 8-byte header
+// (stream id, 3 zero bytes, big-endian size) followed by the payload.
+// Falls back to plain text when the payload isn't framed (e.g. TTY mode).
+// NOTE: non-follow logs() resolves to the raw body buffer, not a stream —
+// passing it to modem.demuxStream fails (observed live:
+// "streama.on is not a function"), hence the manual parse.
+function demuxBuffer(buf) {
+  const out = [];
+  const err = [];
+  if (!buf || buf.length === 0) {
+    return { stdout: '', stderr: '' };
+  }
+  if (buf.length < 8) {
+    return { stdout: buf.toString('utf8'), stderr: '' };
+  }
+  const first = buf.readUInt8(0);
+  if (first !== 0 && first !== 1 && first !== 2) {
+    return { stdout: buf.toString('utf8'), stderr: '' };
+  }
+  let offset = 0;
+  while (offset + 8 <= buf.length) {
+    const type = buf.readUInt8(offset);
+    if (type !== 0 && type !== 1 && type !== 2) {
+      break; // misaligned — stop rather than emit garbage
+    }
+    const len = buf.readUInt32BE(offset + 4);
+    const start = offset + 8;
+    const end = Math.min(start + len, buf.length);
+    const chunk = buf.subarray(start, end).toString('utf8');
+    if (type === 2) {
+      err.push(chunk);
+    } else {
+      out.push(chunk);
+    }
+    offset = end;
+    if (end >= buf.length) {
+      break;
+    }
+  }
+  return { stdout: out.join(''), stderr: err.join('') };
+}
+
+function withTimeout(promise, ms, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  const settled = Promise.resolve(promise).then(
+    (v) => {
+      clearTimeout(timer);
+      return v;
+    },
+    (e) => {
+      clearTimeout(timer);
+      throw e;
+    }
+  );
+  return Promise.race([settled, timeout]);
+}
+
+// Demuxed stdout/stderr text for containers started without a TTY (which is
+// how the platform starts them). Resolves with { stdout, stderr } strings.
+async function containerLogsText(containerId, { tail = 200, timeoutMs = 15000 } = {}) {
   const container = getClient().getContainer(containerId);
-  const stream = await container.logs({ stdout: true, stderr: true, tail });
-  return stream.toString('utf8');
+  const body = await withTimeout(container.logs({ stdout: true, stderr: true, tail }), timeoutMs, 'container logs timed out');
+  const buf = Buffer.isBuffer(body) ? body : Buffer.from(String(body == null ? '' : body));
+  return demuxBuffer(buf);
 }
 
 async function inspectState(containerId) {
@@ -177,6 +245,8 @@ module.exports = {
   startContainer,
   stopAndRemove,
   containerLogs,
+  containerLogsText,
+  demuxBuffer,
   inspectState,
   hostPortFor,
   buildErrorOf,

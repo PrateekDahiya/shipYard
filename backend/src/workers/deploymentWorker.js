@@ -54,7 +54,16 @@ async function fail(deploymentId, stage, message, docker, containerId) {
     }
   }
   require('../utils/logger').warn('pipeline_failed', { deploymentId, stage, reason: message });
-  return deploymentRepo.transition(deploymentId, failureStateFor(stage), message);
+  const finished = await deploymentRepo.transition(deploymentId, failureStateFor(stage), message);
+  // Terminal marker in the persisted log stream (and live tail) — several
+  // failure paths otherwise leave no log row at all.
+  try {
+    const source = stage === 'CLONING' ? 'clone' : stage === 'IMAGE_CREATED' || stage === 'BUILDING' ? 'image' : 'startup';
+    await deploymentRepo.appendLog(deploymentId, source, 'stderr', `FAILED at ${stage}: ${message}`);
+  } catch {
+    /* logs are best-effort; the transition above is the source of truth */
+  }
+  return finished;
 }
 
 async function runDeployment(deploymentId, deps = {}) {
@@ -202,6 +211,7 @@ async function runDeployment(deploymentId, deps = {}) {
     if (await checkCancelled()) return deploymentRepo.getById(deploymentId);
     await getPool().query('UPDATE deployments SET image_tag = ? WHERE id = ?', [tag, deploymentId]);
     await deploymentRepo.transition(deploymentId, 'IMAGE_CREATED', `image ${tag} created`);
+    await deploymentRepo.appendLog(deploymentId, 'image', 'stdout', `image ${tag} ready`);
 
     // 4. START
     await deploymentRepo.transition(deploymentId, 'STARTING', 'starting container');
@@ -234,11 +244,13 @@ async function runDeployment(deploymentId, deps = {}) {
     [project.id, deploymentId, String(newContainerId)]
     );
     await getPool().query('UPDATE deployments SET container_id = ? WHERE id = ?', [String(newContainerId), deploymentId]);
+    await deploymentRepo.appendLog(deploymentId, 'startup', 'stdout', `container ${String(newContainerId).slice(0, 12)} started`);
 
     // 5. HEALTH CHECK (via the ephemeral host port mapped at start).
     // Static sites have no app health endpoint: plain GET / on nginx is the check.
     await deploymentRepo.transition(deploymentId, 'HEALTH_CHECKING', isStatic ? 'probing / on static site' : 'probing application health');
     const healthPath = isStatic ? '/' : project.healthcheck_path || '/health';
+    await deploymentRepo.appendLog(deploymentId, 'startup', 'stdout', `health check: GET ${healthPath}`);
     const mappedPort = docker.hostPortFor ? await docker.hostPortFor(String(newContainerId), appPort) : null;
     const probeHostPort = mappedPort || appPort;
     if (mappedPort) {
@@ -272,6 +284,7 @@ async function runDeployment(deploymentId, deps = {}) {
 
     // 6. RUNNING → SUCCESS, retire previous instance
     await deploymentRepo.transition(deploymentId, 'RUNNING', 'application healthy');
+    await deploymentRepo.appendLog(deploymentId, 'startup', 'stdout', 'health check passed — going live');
     const liveUrl = router.liveUrlFor(project);
     await getPool().query('UPDATE deployments SET live_url = ? WHERE id = ?', [liveUrl, deploymentId]);
     await getPool().query("UPDATE application_instances SET state = 'RUNNING' WHERE deployment_id = ?", [deploymentId]);
@@ -294,7 +307,13 @@ async function runDeployment(deploymentId, deps = {}) {
       [project.id, hostname]
     );
     log.info('pipeline_succeeded', { deploymentId, projectId: project.id, liveUrl });
-    return deploymentRepo.transition(deploymentId, 'SUCCESS', `live at ${liveUrl}`);
+    const succeeded = await deploymentRepo.transition(deploymentId, 'SUCCESS', `live at ${liveUrl}`);
+    try {
+      await deploymentRepo.appendLog(deploymentId, 'startup', 'stdout', `live at ${liveUrl}`);
+    } catch {
+      /* logs are best-effort; the transition above is the source of truth */
+    }
+    return succeeded;
   } catch (e) {
     log.error('pipeline_error', { deploymentId, error: e.message });
     return fail(deploymentId, 'STARTING', `unexpected worker error: ${e.message}`, docker, newContainerId);

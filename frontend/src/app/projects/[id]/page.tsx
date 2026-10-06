@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, type AuditEntry, type EnvVar, type Project } from "@/lib/api";
+import { api, type AuditEntry, type Deployment, type EnvVar, type Project } from "@/lib/api";
 import { parseEnvBulk } from "@/lib/envBulk";
 import { Card, PageHeader, Empty, ErrorBanner, btnPrimary, btnSecondary, inputCls } from "@/components/ui";
 import { ProjectLayout } from "@/components/project-nav";
+import DeploymentLogs from "@/components/deployment-logs";
+import ContainerLogs from "@/components/container-logs";
 
-const VALID_TABS = ["overview", "build", "environment", "team", "activity"] as const;
+const VALID_TABS = ["overview", "build", "environment", "logs", "team", "activity"] as const;
 type TabKey = (typeof VALID_TABS)[number];
 
 function initialTab(): TabKey {
@@ -61,6 +63,8 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
   const [error, setError] = useState<string | null>(null);
   const [showValues, setShowValues] = useState<Record<string, boolean>>({});
   const [actualValues, setActualValues] = useState<Record<string, string>>({});
+  const [allDeployments, setAllDeployments] = useState<Deployment[]>([]);
+  const [logDepId, setLogDepId] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editKey, setEditKey] = useState("");
   const [editValue, setEditValue] = useState("");
@@ -86,6 +90,7 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
       setAudit((await api.audit(params.id)).audit);
       const deps = await api.listDeployments(params.id);
       const latest = deps.deployments?.[0];
+      setAllDeployments(deps.deployments || []);
       if (latest?.live_url) setLatestDeployment({ live_url: latest.live_url });
       setError(null);
     } catch (err) {
@@ -299,12 +304,13 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
     { key: "overview", label: "Overview" },
     { key: "build", label: "Build" },
     { key: "environment", label: "Environment", count: env.length },
+    { key: "logs", label: "Logs" },
     { key: "team", label: "Team" },
     { key: "activity", label: "Activity", count: audit.length },
   ];
 
   return (
-    <ProjectLayout id={params.id} active="overview">
+    <ProjectLayout id={params.id} active="overview" projectName={project.name} tab={tab} onTabSelect={selectTab}>
       <PageHeader
         title={project.name}
         sub={[project.repository_url, `branch ${project.branch}`].filter(Boolean).join(" · ") || "No repository configured yet"}
@@ -541,6 +547,44 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
           {env.length === 0 && <Empty text="No variables yet — add your first one above." />}
         </ul>
       </Card>
+      )}
+
+      {tab === "logs" && (
+      <>
+        <div className="mb-4">
+          <ContainerLogs projectId={params.id} />
+        </div>
+        <Card>
+          <SectionHeader
+            title="Deployment logs"
+            desc="Persisted build output plus a live tail while a build runs."
+            action={
+              allDeployments.length > 0 ? (
+                <select
+                  className={`${inputCls} font-mono text-xs`}
+                  value={logDepId ?? (allDeployments[0] ? String(allDeployments[0].id) : "")}
+                  onChange={(e) => setLogDepId(e.target.value)}
+                  aria-label="Select deployment"
+                >
+                  {allDeployments.map((d) => (
+                    <option key={d.id} value={String(d.id)}>
+                      #{d.id} · {d.status} · {d.branch}
+                    </option>
+                  ))}
+                </select>
+              ) : undefined
+            }
+          />
+          {allDeployments.length === 0 && <Empty text="No deployments yet — deploy first, then read the logs here." />}
+        </Card>
+        {(logDepId ?? (allDeployments[0] ? String(allDeployments[0].id) : null)) && (
+          <DeploymentLogs
+            key={logDepId ?? String(allDeployments[0].id)}
+            projectId={params.id}
+            deploymentId={logDepId ?? String(allDeployments[0].id)}
+          />
+        )}
+      </>
       )}
 
       {tab === "team" && (

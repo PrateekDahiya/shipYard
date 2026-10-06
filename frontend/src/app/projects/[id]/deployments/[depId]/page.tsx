@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { api, type Deployment, type DeployEvent, type DeployLog } from "@/lib/api";
+import { api, type Deployment, type DeployEvent } from "@/lib/api";
 import { Card, PageHeader, ErrorBanner, StatusBadge, btnPrimary, btnSecondary } from "@/components/ui";
 import { ProjectLayout } from "@/components/project-nav";
+import DeploymentLogs from "@/components/deployment-logs";
 
 function isFailed(status: string) {
   return status.includes("FAIL");
@@ -31,25 +32,23 @@ function stageDot(status: string) {
 export default function DeploymentDetail({ params }: { params: { id: string; depId: string } }) {
   const [deployment, setDeployment] = useState<Deployment | null>(null);
   const [events, setEvents] = useState<DeployEvent[]>([]);
-  const [logs, setLogs] = useState<DeployLog[]>([]);
-  const [live, setLive] = useState<string[]>([]);
   const [currentLiveId, setCurrentLiveId] = useState<number | null>(null);
+  const [siblingDeps, setSiblingDeps] = useState<Deployment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
 
   async function load() {
     try {
-      const [depRes, eventsRes, logsRes, listRes] = await Promise.all([
+      const [depRes, eventsRes, listRes] = await Promise.all([
         api.getDeployment(params.id, params.depId),
         api.deploymentEvents(params.id, params.depId).catch(() => ({ events: [] as DeployEvent[] })),
-        api.deploymentLogs(params.id, params.depId).catch(() => ({ logs: [] as DeployLog[] })),
         api.listDeployments(params.id).catch(() => ({ deployments: [] as Deployment[] })),
       ]);
       setDeployment(depRes.deployment);
       setEvents(eventsRes.events);
-      setLogs(logsRes.logs);
       const current = listRes.deployments.find((d) => d.status === "SUCCESS" || d.status === "RUNNING") ?? null;
       setCurrentLiveId(current ? current.id : null);
+      setSiblingDeps(listRes.deployments);
     } catch (err) {
       setError(err instanceof Error ? err.message : "load_failed");
     }
@@ -67,21 +66,12 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
     if (!token) return;
     const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
     const src = new EventSource(`${base}/api/projects/${params.id}/events?token=${token}`);
-    const onLog = (e: MessageEvent) => {
-      try {
-        const evt = JSON.parse(e.data);
-        if (evt.deploymentId === Number(params.depId)) {
-          setLive((prev) => [...prev.slice(-200), `[${evt.data.source}] ${evt.data.line}`].slice(-200));
-        }
-      } catch { /* ignore */ }
-    };
     const onStatus = (e: MessageEvent) => {
       try {
         const evt = JSON.parse(e.data);
         if (evt.deploymentId === Number(params.depId)) load();
       } catch { /* ignore */ }
     };
-    src.addEventListener("DEPLOYMENT_LOG", onLog as EventListener);
     src.addEventListener("DEPLOYMENT_STATUS", onStatus as EventListener);
     return () => src.close();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -126,10 +116,14 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
   if (error && !deployment) return <div><ErrorBanner message={error} /></div>;
   if (!deployment) return <div><Card><p className="text-sm text-gray-500 dark:text-gray-400">Loading deployment…</p></Card></div>;
 
-  const logText = logs.map((l) => `[${l.source}/${l.stream}] ${l.line}`).join("\n");
-
   return (
-    <ProjectLayout id={params.id} active="deployments">
+    <ProjectLayout
+      id={params.id}
+      active="deployments"
+      deployments={siblingDeps}
+      currentLiveId={currentLiveId}
+      activeDeploymentId={Number(params.depId)}
+    >
     <div>
       <PageHeader
         title={`Deployment #${deployment.id}`}
@@ -243,19 +237,7 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
         )}
       </Card>
 
-      <Card className="mt-4">
-        <h2 className="font-semibold">Logs <span className="ml-1 text-xs font-normal text-gray-400">{logs.length} lines</span></h2>
-        <pre className="log-scroll mt-2 max-h-96 overflow-auto rounded-lg bg-gray-950 p-4 font-mono text-xs leading-relaxed text-green-300">
-          {logText || "No logs yet."}
-        </pre>
-      </Card>
-
-      <Card className="mt-4">
-        <h2 className="font-semibold">Live tail <span className="ml-1 rounded bg-green-100 px-1.5 py-0.5 text-xs font-normal text-green-700 dark:bg-green-900/40 dark:text-green-300">streaming</span></h2>
-        <pre className="log-scroll mt-2 max-h-64 overflow-auto rounded-lg bg-gray-950 p-4 font-mono text-xs leading-relaxed text-amber-200">
-          {live.join("\n") || "Waiting for live events…"}
-        </pre>
-      </Card>
+      <DeploymentLogs projectId={params.id} deploymentId={params.depId} />
     </div>
     </ProjectLayout>
   );

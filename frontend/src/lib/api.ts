@@ -213,4 +213,6 @@ export const api = {
     req<{ points: { bucket: string; status: string; n: number }[] }>(`/api/projects/${id}/metrics/series?type=deployments&days=${days}`),
   runtime: (id: string) =>
     req<{ runtime: { running: boolean; cpuPercent?: number; memoryBytes?: number; memoryLimitBytes?: number; diskWritableBytes?: number; netRxBytes?: number; netTxBytes?: number } }>(`/api/projects/${id}/runtime`),
+  containerLogs: (id: string, tail = 200) =>
+    req<{ running: boolean; deploymentId?: number; container?: string; lines?: string[] }>(`/api/projects/${id}/container-logs?tail=${tail}`),
 };
