@@ -59,7 +59,7 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
   const [tab, setTab] = useState<TabKey>(initialTab);
   const [webhook, setWebhook] = useState<{ webhookUrl: string; linked: boolean; repository: string | null; secret: string | null } | null>(null);
   const [webhookWarn, setWebhookWarn] = useState<string | null>(null);
-  const [latestDeployment, setLatestDeployment] = useState<{ live_url: string } | null>(null);
+  const [latestDeployment, setLatestDeployment] = useState<{ url: string } | null>(null);
   const [rlWarn, setRlWarn] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showValues, setShowValues] = useState<Record<string, boolean>>({});
@@ -93,7 +93,8 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
       const deps = await api.listDeployments(params.id);
       const latest = deps.deployments?.[0];
       setAllDeployments(deps.deployments || []);
-      if (latest?.live_url) setLatestDeployment({ live_url: latest.live_url });
+      const latestUrl = latest?.public_url || latest?.live_url;
+      if (latestUrl) setLatestDeployment({ url: latestUrl });
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "load_failed");
@@ -366,13 +367,13 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
         </Card>
 
         <Card>
-          <SectionHeader title="Live deployment" desc="Newest successful build serving traffic." />
-          {latestDeployment ? (
-            <p className="mt-2 text-sm">
-              <a className="font-medium text-indigo-600 dark:text-indigo-400" href={latestDeployment.live_url} target="_blank" rel="noreferrer">
-                live ↗
-              </a>{" "}
-              <span className="break-all font-mono text-xs">{latestDeployment.live_url}</span>
+           <SectionHeader title="Live deployment" desc="Newest successful build serving traffic." />
+           {latestDeployment ? (
+             <p className="mt-2 text-sm">
+               <a className="font-medium text-indigo-600 dark:text-indigo-400" href={latestDeployment.url} target="_blank" rel="noreferrer">
+                 public ↗
+               </a>{" "}
+               <span className="break-all font-mono text-xs">{latestDeployment.url}</span>
             </p>
           ) : (
             <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">No live deployment yet.</p>

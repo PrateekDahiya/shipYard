@@ -33,7 +33,8 @@ export default function Projects() {
           try {
             const deps = await api.listDeployments(String(p.id));
             const latest = deps.deployments?.[0];
-            return latest?.live_url ? { id: String(p.id), live_url: latest.live_url } : null;
+            const url = latest?.public_url || latest?.live_url;
+            return url ? { id: String(p.id), url } : null;
           } catch {
             return null;
           }
@@ -41,7 +42,7 @@ export default function Projects() {
       );
       const map: Record<string, string> = {};
       for (const d of deployed) {
-        if (d) map[d.id] = d.live_url;
+        if (d) map[d.id] = d.url;
       }
       setDeployments(map);
     } catch (err) {

@@ -85,7 +85,10 @@ services:
         condition: service_healthy
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        BACKEND_INTERNAL_URL: http://backend:4000
     mem_limit: 1g
     environment:
       # Lets the UI call its API same-origin when opened through the

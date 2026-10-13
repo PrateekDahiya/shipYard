@@ -66,7 +66,10 @@ services:
       - backend
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:4000}
     mem_limit: 1g
     environment:
       NEXT_PUBLIC_API_URL: ${PUBLIC_BASE_URL}

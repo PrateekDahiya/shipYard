@@ -122,32 +122,21 @@ export default function Deployments({ params }: { params: { id: string } }) {
       />
       {error && <ErrorBanner message={error} />}
 
-      {currentLive && currentLive.live_url && (
-        <Card className="mb-4 border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/30">
+       {currentLive && (currentLive.public_url || currentLive.live_url) && (
+         <Card className="mb-4 border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/30">
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="h-2 w-2 rounded-full bg-green-600 dark:bg-green-400" />
             <span className="font-semibold text-green-900 dark:text-green-200">
               Live: #{currentLive.id}
             </span>
             <a
-              href={currentLive.live_url}
+              href={currentLive.public_url || currentLive.live_url || "#"}
               target="_blank"
               rel="noreferrer"
               className="max-w-full truncate font-mono text-xs text-green-800 underline-offset-2 hover:underline dark:text-green-300"
             >
-              {currentLive.live_url}
+              {currentLive.public_url || currentLive.live_url}
             </a>
-            {currentLive.public_url && (
-              <a
-                href={currentLive.public_url}
-                target="_blank"
-                rel="noreferrer"
-                title="Public link — serves this live build over the internet"
-                className="max-w-full truncate font-mono text-xs font-medium text-indigo-700 underline-offset-2 hover:underline dark:text-indigo-300"
-              >
-                {currentLive.public_url.replace(/^https?:\/\//, "")} ↗
-              </a>
-            )}
             <a
               href={`/projects/${params.id}/deployments/${currentLive.id}`}
               className="ml-auto text-xs font-medium text-green-800 hover:underline dark:text-green-300"
@@ -245,25 +234,14 @@ export default function Deployments({ params }: { params: { id: string } }) {
                   >
                     Redeploy
                   </button>
-                  {isCurrent && d.live_url && (
+                  {isCurrent && (d.public_url || d.live_url) && (
                     <a
                       className="font-medium text-green-700 hover:underline dark:text-green-300"
-                      href={d.live_url}
+                      href={d.public_url || d.live_url || "#"}
                       target="_blank"
                       rel="noreferrer"
                     >
-                      Live ↗
-                    </a>
-                  )}
-                  {isCurrent && d.public_url && (
-                    <a
-                      className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
-                      href={d.public_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      title="Public link — serves this live build over the internet"
-                    >
-                      Public ↗
+                      {d.public_url ? "Public ↗" : "Live ↗"}
                     </a>
                   )}
                   <span className="ml-auto text-xs text-gray-400 sm:hidden" title={d.created_at}>

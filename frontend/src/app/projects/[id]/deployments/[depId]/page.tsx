@@ -175,25 +175,14 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
           <span className="font-mono text-xs text-gray-500 dark:text-gray-400" title={deployment.commit_sha}>
             {deployment.commit_sha}
           </span>
-          {deployment.live_url && (
-            <a className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400" href={deployment.live_url} target="_blank" rel="noreferrer">
-              {isCurrentLive ? "Live ↗" : "Project live URL ↗"}
+          {(deployment.public_url || deployment.live_url) && (
+            <a className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400" href={deployment.public_url || deployment.live_url || "#"} target="_blank" rel="noreferrer">
+              {deployment.public_url ? "Public ↗" : isCurrentLive ? "Live ↗" : "Project live URL ↗"}
             </a>
           )}
           {deployment.direct_url && (
             <a className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400" href={deployment.direct_url} target="_blank" rel="noreferrer">
               Direct ↗
-            </a>
-          )}
-          {isCurrentLive && deployment.public_url && (
-            <a
-              className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400"
-              href={deployment.public_url}
-              target="_blank"
-              rel="noreferrer"
-              title="Public link — serves this live build over the internet"
-            >
-              Public ↗
             </a>
           )}
         </div>
