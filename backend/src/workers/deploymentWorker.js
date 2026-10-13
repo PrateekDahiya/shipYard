@@ -230,6 +230,7 @@ async function runDeployment(deploymentId, deps = {}) {
         port: appPort,
         memoryBytes: parseMemory(project.memory_limit),
         nanoCpus: parseCpu(project.cpu_limit),
+        restartPolicy: project.restart_policy,
       });
       newContainerId = container.id || (container.Id ? container.Id : String(container));
       if (typeof newContainerId !== 'string') {
@@ -289,9 +290,10 @@ async function runDeployment(deploymentId, deps = {}) {
     await getPool().query('UPDATE deployments SET live_url = ? WHERE id = ?', [liveUrl, deploymentId]);
     await getPool().query("UPDATE application_instances SET state = 'RUNNING' WHERE deployment_id = ?", [deploymentId]);
     const [oldInstances] = await getPool().query(
-      "SELECT container_id FROM application_instances WHERE project_id = ? AND deployment_id != ? AND state IN ('RUNNING','STARTING')",
+      "SELECT container_id, deployment_id FROM application_instances WHERE project_id = ? AND deployment_id != ? AND state IN ('RUNNING','STARTING')",
       [project.id, deploymentId]
     );
+    const tunnelService = require('../services/tunnelService');
     for (const row of oldInstances) {
       try {
         await docker.stopAndRemove(row.container_id);
@@ -301,6 +303,8 @@ async function runDeployment(deploymentId, deps = {}) {
       } catch {
         /* best effort */
       }
+      // Retire the superseded build's tunnel (frees the slot; its link dies).
+      await tunnelService.removeDeploymentTunnel(project.id, row.deployment_id, docker);
     }
     await getPool().query(
       "INSERT INTO domains (project_id, hostname, kind, verified) VALUES (?, ?, 'shipyard', 1) ON DUPLICATE KEY UPDATE project_id = VALUES(project_id)",
@@ -313,6 +317,17 @@ async function runDeployment(deploymentId, deps = {}) {
     } catch {
       /* logs are best-effort; the transition above is the source of truth */
     }
+    // Public tunnel for the new live build (never blocks success reporting —
+    // the service degrades to null when tunnels are disabled/unavailable).
+    // Tunnel target is the app container's Docker-network address, never
+    // localhost or a host-mapped port.
+    await tunnelService.ensureDeploymentTunnel({
+      projectId: project.id,
+      deploymentId,
+      containerId: newContainerId,
+      appPort,
+      docker,
+    });
     return succeeded;
   } catch (e) {
     log.error('pipeline_error', { deploymentId, error: e.message });

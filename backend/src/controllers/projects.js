@@ -37,7 +37,7 @@ async function get(req, res, next) {
 
 async function patch(req, res, next) {
   try {
-    const project = await projectService.update(req.user.id, req.project.id, req.body || {});
+    const project = await projectService.update(req.user.id, req.project.id, req.body || {}, require('../runtime/docker'));
     log.info('project_updated', { requestId: req.id, userId: req.user.id, projectId: project.id });
     res.status(200).json({ project, requestId: req.id });
   } catch (e) {

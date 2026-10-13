@@ -54,6 +54,7 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
   const [rph, setRph] = useState(1000);
   const [cpu, setCpu] = useState("");
   const [memory, setMemory] = useState("");
+  const [restartPolicy, setRestartPolicy] = useState("");
   const [rlEnabled, setRlEnabled] = useState(false);
   const [tab, setTab] = useState<TabKey>(initialTab);
   const [webhook, setWebhook] = useState<{ webhookUrl: string; linked: boolean; repository: string | null; secret: string | null } | null>(null);
@@ -86,6 +87,7 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
       setHealthPath(p.project.healthcheck_path || "/health");
       setDeployType(p.project.deploy_type || "server");
       setOutputDir(p.project.output_dir || "build");
+      setRestartPolicy(p.project.restart_policy || "");
       setEnv((await api.listEnv(params.id)).variables);
       setAudit((await api.audit(params.id)).audit);
       const deps = await api.listDeployments(params.id);
@@ -250,6 +252,7 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
         output_dir: outputDir || "build",
         cpu_limit: cpu || null,
         memory_limit: memory || null,
+        restart_policy: restartPolicy || null,
       });
       await load();
     } catch (err) {
@@ -461,6 +464,14 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
                 </label>
                 <label className="text-sm">Memory limit (e.g. 512M)
                   <input className={`${inputCls} mt-1 block w-40 font-mono`} value={memory} onChange={(e) => setMemory(e.target.value)} placeholder="512M" />
+                </label>
+                <label className="text-sm">Restart policy
+                  <select className={`${inputCls} mt-1 block w-44`} value={restartPolicy} onChange={(e) => setRestartPolicy(e.target.value)}>
+                    <option value="">Unless stopped (default)</option>
+                    <option value="always">Always</option>
+                    <option value="on-failure">On failure (5 retries)</option>
+                    <option value="never">Never</option>
+                  </select>
                 </label>
               </div>
             </div>

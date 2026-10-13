@@ -61,6 +61,10 @@ function containerName(projectId, deploymentId) {
   return `shipyard-p${projectId}-d${deploymentId}`;
 }
 
+function tunnelName(projectId, deploymentId) {
+  return `shipyard-p${projectId}-d${deploymentId}-tunnel`;
+}
+
 function buildErrorOf(output) {
   const failed = (output || []).find((e) => e && (e.error || e.errorDetail));
   if (!failed) {
@@ -108,12 +112,32 @@ async function buildImage({ tag, contextDir, dockerfile = 'Dockerfile', onProgre
   });
 }
 
-async function startContainer({ name, image, env = {}, labels = {}, port, memoryBytes, nanoCpus }) {
+// Project restart_policy ('unless-stopped' | 'always' | 'on-failure' |
+// 'never' | null) → Docker HostConfig. Null/empty means the platform default:
+// unless-stopped, i.e. the daemon restarts crashed containers automatically.
+function restartPolicyOf(value) {
+  if (value === null || value === undefined || value === '') {
+    return { Name: 'unless-stopped' };
+  }
+  if (value === 'unless-stopped' || value === 'always') {
+    return { Name: value };
+  }
+  if (value === 'on-failure') {
+    return { Name: 'on-failure', MaximumRetryCount: 5 };
+  }
+  if (value === 'never') {
+    return undefined;
+  }
+  return { Name: 'unless-stopped' };
+}
+
+async function startContainer({ name, image, env = {}, labels = {}, port, memoryBytes, nanoCpus, cmd, restartPolicy }) {
   const Env = Object.entries(env).map(([k, v]) => `${k}=${v}`);
   const HostConfig = {
     Memory: memoryBytes || undefined,
     NanoCpus: nanoCpus || undefined,
     AutoRemove: false,
+    RestartPolicy: restartPolicyOf(restartPolicy),
     NetworkMode: process.env.SHIPYARD_NETWORK || undefined,
   };
   // Publish the app port on an ephemeral host port so the worker can health-
@@ -128,9 +152,61 @@ async function startContainer({ name, image, env = {}, labels = {}, port, memory
     Labels: labels,
     ExposedPorts: port ? { [`${port}/tcp`]: {} } : undefined,
     HostConfig,
+    ...(cmd ? { Cmd: cmd } : {}),
   });
   await container.start();
   return container;
+}
+
+async function updateRestartPolicy(containerId, restartPolicy) {
+  await getContainer(containerId).update({ RestartPolicy: restartPolicyOf(restartPolicy) });
+}
+
+async function pullImage(image) {
+  const stream = await getClient().pull(image);
+  return new Promise((resolve, reject) => {
+    getClient().modem.followProgress(stream, (err, res) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve(res);
+    });
+  });
+}
+
+// Best-effort removal of every container whose name starts with prefix
+// (tunnel sidecars). Never throws; returns the removed count.
+async function removeContainersByNamePrefix(prefix) {
+  let removed = 0;
+  let list = [];
+  try {
+    list = await getClient().listContainers({ all: true });
+  } catch {
+    return removed;
+  }
+  for (const c of list) {
+    const names = c.Names || [];
+    if (!names.some((n) => n === `/${prefix}` || n.startsWith(`/${prefix}`))) {
+      continue;
+    }
+    const id = c.Id;
+    try {
+      const container = getClient().getContainer(id);
+      try {
+        await container.stop({ t: 5 });
+      } catch (e) {
+        if (!e || (e.statusCode !== 304 && e.statusCode !== 404)) {
+          throw e;
+        }
+      }
+      await container.remove({ force: true });
+      removed += 1;
+    } catch {
+      /* already gone or stopping — best effort */
+    }
+  }
+  return removed;
 }
 
 async function stopAndRemove(containerId, { timeoutSeconds = 10 } = {}) {
@@ -219,6 +295,21 @@ async function containerLogsText(containerId, { tail = 200, timeoutMs = 15000 } 
   return demuxBuffer(buf);
 }
 
+async function containerIp(containerId) {
+  const data = await getClient().getContainer(containerId).inspect();
+  const nets = (data.NetworkSettings && data.NetworkSettings.Networks) || {};
+  for (const net of Object.values(nets)) {
+    if (net && net.IPAddress) {
+      return net.IPAddress;
+    }
+  }
+  throw new Error('tunnel_no_container_ip');
+}
+
+async function listLabeled(label) {
+  return getClient().listContainers({ all: true, filters: { label: [label] } });
+}
+
 async function inspectState(containerId) {
   const data = await getClient().getContainer(containerId).inspect();
   return { running: !!data.State.Running, status: data.State.Status, exitCode: data.State.ExitCode };
@@ -241,11 +332,18 @@ module.exports = {
   baseLabels,
   traefikLabels,
   containerName,
+  tunnelName,
+  restartPolicyOf,
   buildImage,
+  pullImage,
+  removeContainersByNamePrefix,
   startContainer,
+  updateRestartPolicy,
   stopAndRemove,
   containerLogs,
   containerLogsText,
+  containerIp,
+  listLabeled,
   demuxBuffer,
   inspectState,
   hostPortFor,

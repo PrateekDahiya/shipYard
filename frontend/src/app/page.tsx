@@ -215,6 +215,23 @@ export default function Home() {
           ))}
         </div>
 
+        {data.platformUrl && (
+          <Card className="mb-4 border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/30">
+            <p className="flex flex-wrap items-center gap-2 text-sm text-green-900 dark:text-green-200">
+              <span className="h-2 w-2 rounded-full bg-green-600 dark:bg-green-400" />
+              <span className="font-semibold">This ShipYard is public:</span>
+              <a
+                href={data.platformUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="break-all font-mono text-xs underline-offset-2 hover:underline"
+              >
+                {data.platformUrl}
+              </a>
+            </p>
+          </Card>
+        )}
+
         {view === "overview" && (
           <>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -310,6 +327,18 @@ export default function Home() {
                         <span className="font-mono font-semibold text-indigo-600 dark:text-indigo-400">#{latest.id}</span>
                         <span className="min-w-0 flex-1 truncate text-gray-600 dark:text-gray-300">{projectName}</span>
                         <StatusBadge status={latest.status} />
+                        {latest.status === "SUCCESS" && latest.public_url && (
+                          <a
+                            href={latest.public_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            title="Public link — serves this live build over the internet"
+                            className="shrink-0 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                          >
+                            Public ↗
+                          </a>
+                        )}
                         <span className="shrink-0 text-xs text-gray-400" title={latest.created_at}>
                           {timeAgo(latest.created_at)}
                         </span>

@@ -1,5 +1,16 @@
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+// API origin for the browser. An explicit build-time URL always wins.
+// Otherwise, when the UI is opened remotely (e.g. through the platform
+// tunnel) the API is same-origin (Next rewrites /api/* to the backend);
+// on localhost the backend is reached directly as before.
+export function apiBase(): string {
+  const configured = process.env.NEXT_PUBLIC_API_URL;
+  if (configured) return configured;
+  if (typeof window !== "undefined") {
+    const { hostname, origin } = window.location;
+    if (hostname !== "localhost" && hostname !== "127.0.0.1") return origin;
+  }
+  return "http://localhost:4000";
+}
 
 export interface User {
   id: number;
@@ -22,6 +33,7 @@ export interface Project {
   deploy_timeout: number | null;
   cpu_limit: string | null;
   memory_limit: string | null;
+  restart_policy?: string | null;
   auto_deploy: number;
   deploy_type?: string;
   output_dir?: string;
@@ -60,6 +72,7 @@ export interface Deployment {
   container_id: string | null;
   live_url: string | null;
   direct_url?: string | null;
+  public_url?: string | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -97,7 +110,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   };
   const t = token();
   if (t) headers["Authorization"] = `Bearer ${t}`;
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  const res = await fetch(`${apiBase()}${path}`, { ...init, headers });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error((body as { error?: string }).error || `request_failed_${res.status}`);
@@ -203,9 +216,10 @@ export const api = {
     req<{ ok: boolean }>(`/api/projects/${id}`, { method: "DELETE" }),
   overview: () =>
     req<{
-      projects: (Project & { latest: { id: number; status: string; commit_sha: string; live_url: string | null; created_at: string } | null })[];
+      projects: (Project & { latest: { id: number; status: string; commit_sha: string; live_url: string | null; public_url: string | null; created_at: string } | null })[];
       counts: { live: number; failed: number; total: number };
       recentFailures: { id: number; project_id: number; project_name: string; status: string; commit_sha: string; created_at: string }[];
+      platformUrl: string | null;
     }>("/api/overview"),
   requestSeries: (id: string, hours = 24) =>
     req<{ points: { bucket: string; total: number; errors: number; avgMs: number | null; maxMs: number | null }[] }>(`/api/projects/${id}/metrics/series?type=requests&hours=${hours}`),

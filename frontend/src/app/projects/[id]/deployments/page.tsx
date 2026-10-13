@@ -137,6 +137,17 @@ export default function Deployments({ params }: { params: { id: string } }) {
             >
               {currentLive.live_url}
             </a>
+            {currentLive.public_url && (
+              <a
+                href={currentLive.public_url}
+                target="_blank"
+                rel="noreferrer"
+                title="Public link — serves this live build over the internet"
+                className="max-w-full truncate font-mono text-xs font-medium text-indigo-700 underline-offset-2 hover:underline dark:text-indigo-300"
+              >
+                {currentLive.public_url.replace(/^https?:\/\//, "")} ↗
+              </a>
+            )}
             <a
               href={`/projects/${params.id}/deployments/${currentLive.id}`}
               className="ml-auto text-xs font-medium text-green-800 hover:underline dark:text-green-300"
@@ -242,6 +253,17 @@ export default function Deployments({ params }: { params: { id: string } }) {
                       rel="noreferrer"
                     >
                       Live ↗
+                    </a>
+                  )}
+                  {isCurrent && d.public_url && (
+                    <a
+                      className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                      href={d.public_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Public link — serves this live build over the internet"
+                    >
+                      Public ↗
                     </a>
                   )}
                   <span className="ml-auto text-xs text-gray-400 sm:hidden" title={d.created_at}>

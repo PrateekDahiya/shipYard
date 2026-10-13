@@ -4,6 +4,7 @@ const { getPool } = require('../config/db');
 
 const ALLOWED_FIELDS = [
   'name',
+  'slug',
   'repository_url',
   'branch',
   'build_command',
@@ -15,6 +16,7 @@ const ALLOWED_FIELDS = [
   'deploy_timeout',
   'cpu_limit',
   'memory_limit',
+  'restart_policy',
   'auto_deploy',
   'deploy_type',
   'output_dir',
@@ -50,13 +52,14 @@ async function getById(id) {
 
 async function createWithOwner(conn, { ownerId, data }) {
   const [result] = await conn.query(
-    `INSERT INTO projects
-     (owner_id, name, repository_url, branch, build_command, run_command, working_directory,
-      app_port, healthcheck_path, healthcheck_timeout, deploy_timeout, cpu_limit, memory_limit, auto_deploy, deploy_type, output_dir)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     `INSERT INTO projects
+     (owner_id, name, slug, repository_url, branch, build_command, run_command, working_directory,
+      app_port, healthcheck_path, healthcheck_timeout, deploy_timeout, cpu_limit, memory_limit, restart_policy, auto_deploy, deploy_type, output_dir)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       ownerId,
       data.name,
+      data.slug || null,
       data.repository_url || null,
       data.branch || 'main',
       data.build_command || null,
@@ -68,6 +71,7 @@ async function createWithOwner(conn, { ownerId, data }) {
       data.deploy_timeout ?? 600,
       data.cpu_limit || null,
       data.memory_limit || null,
+      data.restart_policy || null,
       data.auto_deploy ? 1 : 0,
       data.deploy_type || 'server',
       data.output_dir || 'build',

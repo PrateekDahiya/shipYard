@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, apiBase } from "@/lib/api";
 import { Card, PageHeader, ErrorBanner, btnPrimary, inputCls } from "@/components/ui";
 import { ProjectLayout } from "@/components/project-nav";
 
@@ -24,7 +24,7 @@ export default function Shell({ params }: { params: { id: string } }) {
     try {
       const s = await api.openShell(params.id);
       const token = window.localStorage.getItem("shipyard_token");
-      const base = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000").replace(/^http/, "ws");
+      const base = apiBase().replace(/^http/, "ws");
       const ws = new WebSocket(`${base}${s.attachUrl}?token=${token}`);
       wsRef.current = ws;
       ws.onopen = () => {

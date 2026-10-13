@@ -9,6 +9,11 @@ async function getById(id) {
   return rows[0] || null;
 }
 
+async function setPublicUrl(id, url) {
+  await getPool().query('UPDATE deployments SET public_url = ? WHERE id = ?', [url || null, id]);
+  return getById(id);
+}
+
 async function listForProject(projectId, limit = 50) {
   const [rows] = await getPool().query('SELECT * FROM deployments WHERE project_id = ? ORDER BY id DESC LIMIT ?', [
     projectId,
@@ -142,4 +147,4 @@ async function eventsFor(deploymentId) {
   return rows;
 }
 
-module.exports = { getById, listForProject, create, transition, appendLog, logsFor, eventsFor };
+module.exports = { getById, listForProject, create, transition, appendLog, logsFor, eventsFor, setPublicUrl };

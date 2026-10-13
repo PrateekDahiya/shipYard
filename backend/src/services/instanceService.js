@@ -110,6 +110,7 @@ async function start(userId, projectId, docker) {
       ...docker.traefikLabels({ hostname: router.hostnameFor(project), serviceName: `shipyard-p${projectId}`, port: appPort }),
     },
     port: appPort,
+    restartPolicy: project.restart_policy,
   });
   const cid = String(container.id || container.Id);
   let hostPort = null;

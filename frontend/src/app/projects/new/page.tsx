@@ -15,6 +15,7 @@ export default function NewProject() {
   const [buildCommand, setBuildCommand] = useState("");
   const [runCommand, setRunCommand] = useState("");
   const [appPort, setAppPort] = useState("3000");
+  const [restartPolicy, setRestartPolicy] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -37,6 +38,7 @@ export default function NewProject() {
         build_command: buildCommand.trim() || undefined,
         run_command: runCommand.trim() || undefined,
         app_port: parseInt(appPort, 10) || 3000,
+        restart_policy: restartPolicy || undefined,
       } as Parameters<typeof api.createProject>[0]);
       router.push(`/projects/${res.project.id}`);
     } catch (err) {
@@ -168,6 +170,20 @@ export default function NewProject() {
                   onChange={(e) => setAppPort(e.target.value)}
                   placeholder="3000"
                 />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-gray-700 dark:text-gray-300">
+                  Restart policy
+                </span>
+                <select className={`${inputCls} w-56`} value={restartPolicy} onChange={(e) => setRestartPolicy(e.target.value)}>
+                  <option value="">Unless stopped (default)</option>
+                  <option value="always">Always</option>
+                  <option value="on-failure">On failure (5 retries)</option>
+                  <option value="never">Never</option>
+                </select>
+                <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                  Docker restarts crashed containers automatically by default.
+                </span>
               </label>
             </div>
           </Card>

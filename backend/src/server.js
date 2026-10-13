@@ -24,6 +24,16 @@ function start(port) {
     });
   });
   shellGateway.attach(server);
+  try {
+    const { startHealthWatchdog, watchdogEnabled } = require('./services/healthWatchdog');
+    if (watchdogEnabled()) {
+      startHealthWatchdog();
+    } else {
+      log.info('health_watchdog_disabled', {});
+    }
+  } catch (e) {
+    log.warn('health_watchdog_start_failed', { message: e && e.message });
+  }
   return server;
 }
 

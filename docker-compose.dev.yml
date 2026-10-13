@@ -87,11 +87,26 @@ services:
   frontend:
     build: ./frontend
     mem_limit: 1g
+    environment:
+      # Lets the UI call its API same-origin when opened through the
+      # platform tunnel (see next.config.mjs rewrites). Unset locally.
+      BACKEND_INTERNAL_URL: http://backend:4000
     ports:
       - "3000:3000"
     depends_on:
       backend:
         condition: service_healthy
+
+  # Public entry for the ShipYard UI itself: https://<random>.trycloudflare.com
+  # -> http://frontend:3000 (API calls ride same-origin via Next rewrites).
+  # Grab the link with: docker compose -f docker-compose.dev.yml logs tunnel
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    mem_limit: 1g
+    command: tunnel --url http://frontend:3000 --no-autoupdate
+    depends_on:
+      frontend:
+        condition: service_started
 
   traefik:
     image: traefik:v3

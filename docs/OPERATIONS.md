@@ -25,6 +25,8 @@
 ## Incidents
 - Webhook storms: dedupe + MySQL named locks serialize same-commit deliveries; concurrent distinct commits queue normally (cap worker concurrency via queue).
 - Bad deploy: `HEALTH_CHECK_FAILED` keeps the old version serving; rollback creates a new deployment from any prior commit.
+- Runtime health: the API watchdog probes every `RUNNING`/`UNHEALTHY` instance on a random 5–10 second cadence. Three consecutive failures mark an instance `UNHEALTHY`; a passing probe marks it `RUNNING` again and records a deployment event. Configure `HEALTH_WATCHDOG_ENABLED=false`, `HEALTH_WATCHDOG_MIN_MS`, `HEALTH_WATCHDOG_MAX_MS`, and `HEALTH_WATCHDOG_FAILS` only for operations/testing overrides.
+- Container recovery: project containers default to Docker `unless-stopped`, so daemon restarts recover crashed containers. Project settings can select `always`, `on-failure` (five retries), or `never`; the setting is persisted and applied live when possible.
 - Secret leak suspicion: env reads are masked; audit/logs carry no values. Rotate `DB_ENV_KEY`? Values are per-value encrypted — rotation needs re-encryption migration (backlog).
 
 ## Known dev gaps (must close before prod)

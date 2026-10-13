@@ -17,7 +17,14 @@ router.use('/projects/:id', rateLimit);
 router.get('/overview', async (req, res, next) => {
   try {
     const { overview } = require('../services/overviewService');
-    res.status(200).json({ ...(await overview(req.user.id)), requestId: req.id });
+    let platformUrl = null;
+    try {
+      const tunnelService = require('../services/tunnelService');
+      platformUrl = await tunnelService.getPlatformTunnelUrl(require('../runtime/docker'));
+    } catch {
+      /* platform tunnel is optional */
+    }
+    res.status(200).json({ ...(await overview(req.user.id)), platformUrl, requestId: req.id });
   } catch (e) {
     next(e);
   }

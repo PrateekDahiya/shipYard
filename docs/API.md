@@ -8,8 +8,8 @@ Register: `{ email, password (min 8), name? }` → 201 `{ user, token }`.
 Login: `{ email, password }` → 200. `me` → current user (no password hash).
 
 ## Projects — `/api/projects` (auth; `:id` routes require membership)
-- `GET /` — own + member projects. `POST /` — `{ name*, branch?, build_command?, run_command?, app_port?, ... }` → 201.
-- `GET|PATCH|DELETE /:id` — PATCH accepts config fields + `cpu_limit`/`memory_limit` (validated, 400 on bad values) + `auto_deploy`.
+- `GET /` — own + member projects. `POST /` — `{ name*, branch?, build_command?, run_command?, app_port?, restart_policy?, ... }` → 201.
+- `GET|PATCH|DELETE /:id` — PATCH accepts config fields + `cpu_limit`/`memory_limit` (validated, 400 on bad values) + `restart_policy` (`unless-stopped`, `always`, `on-failure`, or `never`) + `auto_deploy`. The default is `unless-stopped`; changing it updates active containers when Docker is available and always applies to the next deployment.
 - Env: `GET /:id/env` (secrets masked) · `POST /:id/env` `{ key*, value*, is_secret?, scope? }` · `DELETE /:id/env/:key`.
 - GitHub link: `POST /:id/github/link` `{ github_repo_id*, full_name*, default_branch? }` → includes `webhook_secret`.
 - Webhook config: `GET /:id/webhook-config` → `{ webhookUrl, linked, repository, secret }`.

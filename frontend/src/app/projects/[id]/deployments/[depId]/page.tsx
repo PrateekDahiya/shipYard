@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { api, type Deployment, type DeployEvent } from "@/lib/api";
+import { api, apiBase, type Deployment, type DeployEvent } from "@/lib/api";
 import { Card, PageHeader, ErrorBanner, StatusBadge, btnPrimary, btnSecondary } from "@/components/ui";
 import { ProjectLayout } from "@/components/project-nav";
 import DeploymentLogs from "@/components/deployment-logs";
@@ -64,7 +64,7 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
   useEffect(() => {
     const token = typeof window !== "undefined" ? window.localStorage.getItem("shipyard_token") : null;
     if (!token) return;
-    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+    const base = apiBase();
     const src = new EventSource(`${base}/api/projects/${params.id}/events?token=${token}`);
     const onStatus = (e: MessageEvent) => {
       try {
@@ -183,6 +183,17 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
           {deployment.direct_url && (
             <a className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400" href={deployment.direct_url} target="_blank" rel="noreferrer">
               Direct ↗
+            </a>
+          )}
+          {isCurrentLive && deployment.public_url && (
+            <a
+              className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+              href={deployment.public_url}
+              target="_blank"
+              rel="noreferrer"
+              title="Public link — serves this live build over the internet"
+            >
+              Public ↗
             </a>
           )}
         </div>
