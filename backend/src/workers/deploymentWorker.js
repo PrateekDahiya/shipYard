@@ -17,6 +17,20 @@ function workRoot() {
   return process.env.SHIPYARD_WORKDIR || path.join(os.tmpdir(), 'shipyard-builds');
 }
 
+// Stream callbacks are invoked by child-process/Docker emitters, not awaited
+// by the emitter. Log persistence is observability-only and must never turn a
+// deleted deployment or transient DB failure into an unhandled rejection that
+// takes down the worker.
+function appendLogBestEffort(deploymentId, source, stream, line) {
+  return deploymentRepo.appendLog(deploymentId, source, stream, line).catch((e) => {
+    require('../utils/logger').warn('deployment_log_write_failed', {
+      deploymentId,
+      source,
+      message: e && e.message,
+    });
+  });
+}
+
 function runCmd(cmd, { cwd, env, timeoutMs, onData }) {
   return new Promise((resolve) => {
     const child = spawn(cmd, { cwd, env: { ...process.env, ...env }, shell: true, timeout: timeoutMs });
@@ -108,7 +122,7 @@ async function runDeployment(deploymentId, deps = {}) {
       cwd: dir,
       env: cloneEnv,
       timeoutMs: 5 * 60 * 1000,
-      onData: (stream, chunk) => deploymentRepo.appendLog(deploymentId, 'clone', stream, chunk),
+      onData: (stream, chunk) => appendLogBestEffort(deploymentId, 'clone', stream, chunk),
     });
     if (await checkCancelled()) return deploymentRepo.getById(deploymentId);
     if (clone.exitCode !== 0) {
@@ -169,7 +183,7 @@ async function runDeployment(deploymentId, deps = {}) {
         cwd: path.join(dir, project.working_directory && project.working_directory !== '/' ? project.working_directory : '.'),
         env: buildEnv,
         timeoutMs: (project.deploy_timeout || 600) * 1000,
-        onData: (stream, chunk) => deploymentRepo.appendLog(deploymentId, 'build', stream, chunk),
+        onData: (stream, chunk) => appendLogBestEffort(deploymentId, 'build', stream, chunk),
       });
       await getPool().query('UPDATE builds SET exit_code = ?, timed_out = ? WHERE deployment_id = ?', [
         result.exitCode,
@@ -201,7 +215,7 @@ async function runDeployment(deploymentId, deps = {}) {
       await docker.buildImage({
         tag,
         contextDir: dir,
-        onProgress: (line) => deploymentRepo.appendLog(deploymentId, 'image', 'stdout', line),
+        onProgress: (line) => appendLogBestEffort(deploymentId, 'image', 'stdout', line),
         buildArgs,
       });
     } catch (e) {
@@ -335,4 +349,4 @@ async function runDeployment(deploymentId, deps = {}) {
   }
 }
 
-module.exports = { runDeployment, runCmd, workRoot };
+module.exports = { runDeployment, runCmd, workRoot, appendLogBestEffort };

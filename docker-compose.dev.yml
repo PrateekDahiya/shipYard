@@ -52,6 +52,7 @@ services:
 
   worker:
     build: ./worker
+    restart: unless-stopped
     mem_limit: 1g
     environment:
       DB_HOST: ${DB_HOST:-mysql}
