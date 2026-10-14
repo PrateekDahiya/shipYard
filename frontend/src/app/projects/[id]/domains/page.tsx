@@ -51,16 +51,16 @@ export default function Domains({ params }: { params: { id: string } }) {
       {error && <ErrorBanner message={error} />}
       {hint && <Card className="mb-4 border-blue-200 bg-blue-50 font-mono text-xs dark:border-blue-900 dark:bg-blue-950/50">{hint}</Card>}
       <Card>
-        <form onSubmit={add} className="flex gap-2">
-          <input className={`${inputCls} flex-1 font-mono`} placeholder="api.example.com" value={hostname} onChange={(e) => setHostname(e.target.value)} />
-          <button className={btnPrimary} type="submit">Add domain</button>
+        <form onSubmit={add} className="flex flex-col gap-2 sm:flex-row">
+          <input className={`${inputCls} min-w-0 flex-1 font-mono`} placeholder="api.example.com" value={hostname} onChange={(e) => setHostname(e.target.value)} />
+          <button className={`${btnPrimary} w-full sm:w-auto`} type="submit">Add domain</button>
         </form>
       </Card>
       <Card className="mt-4 !p-0">
         <ul className="divide-y divide-gray-100 dark:divide-gray-800">
           {domains.map((d) => (
-            <li key={d.id} className="flex items-center gap-3 px-4 py-3 text-sm">
-              <span className="font-mono">{d.hostname}</span>
+              <li key={d.id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+               <span className="min-w-0 break-all font-mono">{d.hostname}</span>
               <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${d.verified ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300"}`}>
                 {d.verified ? "verified" : d.kind === "shipyard" ? "shipyard (auto)" : "pending verification"}
               </span>

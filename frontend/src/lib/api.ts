@@ -1,13 +1,11 @@
 // API origin for the browser. An explicit build-time URL always wins.
-// Otherwise, when the UI is opened remotely (e.g. through the platform
-// tunnel) the API is same-origin (Next rewrites /api/* to the backend);
-// on localhost the backend is reached directly as before.
+// Otherwise use the current UI origin so local preview ports and public
+// tunnels both stay same-origin; Next rewrites /api/* to the backend.
 export function apiBase(): string {
   const configured = process.env.NEXT_PUBLIC_API_URL;
   if (configured) return configured;
   if (typeof window !== "undefined") {
-    const { hostname, origin } = window.location;
-    if (hostname !== "localhost" && hostname !== "127.0.0.1") return origin;
+    return window.location.origin;
   }
   return "http://localhost:4000";
 }
@@ -104,21 +102,61 @@ export function setToken(t: string | null) {
   if (typeof window === "undefined") return;
   if (t) window.localStorage.setItem("shipyard_token", t);
   else window.localStorage.removeItem("shipyard_token");
+  responseCache.clear();
+  inFlight.clear();
+}
+
+type CacheEntry = { value: unknown; expiresAt: number };
+const responseCache = new Map<string, CacheEntry>();
+const inFlight = new Map<string, Promise<unknown>>();
+
+function cacheTtl(path: string) {
+  if (path.includes("/container-logs") || path.includes("/logs") || path.includes("/events")) return 0;
+  if (path === "/api/overview") return 5000;
+  if (path.includes("/deployments")) return 2500;
+  if (path.includes("/metrics/series") || path.endsWith("/metrics")) return 15000;
+  if (path.includes("/requests")) return 10000;
+  if (path.includes("/runtime")) return 5000;
+  return 30000;
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method || "GET").toUpperCase();
+  const isGet = method === "GET";
+  const ttl = isGet && init?.cache !== "no-store" ? cacheTtl(path) : 0;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...((init?.headers as Record<string, string>) || {}),
   };
   const t = token();
   if (t) headers["Authorization"] = `Bearer ${t}`;
-  const res = await fetch(`${apiBase()}${path}`, { ...init, headers });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error((body as { error?: string }).error || `request_failed_${res.status}`);
+
+  const key = `${t || "anonymous"}:${path}`;
+  if (ttl > 0) {
+    const cached = responseCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.value as T;
+    const pending = inFlight.get(key);
+    if (pending) return pending as Promise<T>;
   }
-  return body as T;
+
+  const request = (async () => {
+    const res = await fetch(`${apiBase()}${path}`, { ...init, headers });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error((body as { error?: string }).error || `request_failed_${res.status}`);
+    }
+    if (ttl > 0) responseCache.set(key, { value: body, expiresAt: Date.now() + ttl });
+    return body as T;
+  })();
+
+  if (ttl > 0) {
+    inFlight.set(key, request);
+    request.finally(() => inFlight.delete(key)).catch(() => {});
+  } else if (!isGet) {
+    responseCache.clear();
+    inFlight.clear();
+  }
+  return request;
 }
 
 export const api = {
@@ -147,7 +185,8 @@ export const api = {
     }),
   listEnv: (id: string, options?: { includeSecretValues?: boolean }) =>
     req<{ variables: EnvVar[] }>(
-      `/api/projects/${id}/env${options?.includeSecretValues ? '?includeSecretValues=true' : ''}`
+      `/api/projects/${id}/env${options?.includeSecretValues ? '?includeSecretValues=true' : ''}`,
+      options?.includeSecretValues ? { cache: "no-store" } : undefined
     ),
   upsertEnv: (id: string, v: { key: string; value: string; is_secret?: boolean; scope?: string }) =>
     req<{ variable: EnvVar }>(`/api/projects/${id}/env`, {
@@ -172,9 +211,9 @@ export const api = {
   getDeployment: (projectId: string, depId: string) =>
     req<{ deployment: Deployment }>(`/api/projects/${projectId}/deployments/${depId}`),
   deploymentEvents: (projectId: string, depId: string) =>
-    req<{ events: DeployEvent[] }>(`/api/projects/${projectId}/deployments/${depId}/events`),
+    req<{ events: DeployEvent[] }>(`/api/projects/${projectId}/deployments/${depId}/events`, { cache: "no-store" }),
   deploymentLogs: (projectId: string, depId: string) =>
-    req<{ logs: DeployLog[] }>(`/api/projects/${projectId}/deployments/${depId}/logs`),
+    req<{ logs: DeployLog[] }>(`/api/projects/${projectId}/deployments/${depId}/logs`, { cache: "no-store" }),
   cancelDeployment: (projectId: string, depId: string) =>
     req<{ deployment: Deployment }>(`/api/projects/${projectId}/deployments/${depId}/cancel`, {
       method: "POST",
@@ -219,7 +258,7 @@ export const api = {
     req<{ ok: boolean }>(`/api/projects/${id}`, { method: "DELETE" }),
   overview: () =>
     req<{
-      projects: (Project & { latest: { id: number; status: string; commit_sha: string; live_url: string | null; public_url: string | null; created_at: string } | null })[];
+      projects: (Project & { latest: { id: number; status: string; instance_state?: string | null; public_health_state?: string | null; commit_sha: string; live_url: string | null; public_url: string | null; created_at: string } | null })[];
       counts: { live: number; failed: number; total: number };
       recentFailures: { id: number; project_id: number; project_name: string; status: string; commit_sha: string; created_at: string }[];
       platformUrl: string | null;
@@ -231,5 +270,5 @@ export const api = {
   runtime: (id: string) =>
     req<{ runtime: { running: boolean; cpuPercent?: number; memoryBytes?: number; memoryLimitBytes?: number; diskWritableBytes?: number; netRxBytes?: number; netTxBytes?: number } }>(`/api/projects/${id}/runtime`),
   containerLogs: (id: string, tail = 200) =>
-    req<{ running: boolean; deploymentId?: number; container?: string; lines?: string[] }>(`/api/projects/${id}/container-logs?tail=${tail}`),
+    req<{ running: boolean; deploymentId?: number; container?: string; lines?: string[] }>(`/api/projects/${id}/container-logs?tail=${tail}`, { cache: "no-store" }),
 };

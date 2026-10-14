@@ -57,11 +57,11 @@ export default function Requests({ params }: { params: { id: string } }) {
       />
       {error && <ErrorBanner message={error} />}
       <Card>
-        <form onSubmit={(e) => { e.preventDefault(); setOpen(null); load(); }} className="flex flex-wrap gap-2">
-          <input className={`${inputCls} w-32`} placeholder="method" value={method} onChange={(e) => setMethod(e.target.value.toUpperCase())} />
-          <input className={`${inputCls} w-32`} placeholder="status" value={status} onChange={(e) => setStatus(e.target.value)} />
-          <input className={`${inputCls} min-w-0 flex-1`} placeholder="path contains…" value={pathFilter} onChange={(e) => setPathFilter(e.target.value)} />
-          <button className={btnPrimary} type="submit">Filter</button>
+        <form onSubmit={(e) => { e.preventDefault(); setOpen(null); load(); }} className="grid gap-2 sm:grid-cols-[8rem_8rem_minmax(0,1fr)_auto]">
+          <input className={`${inputCls} w-full`} placeholder="method" value={method} onChange={(e) => setMethod(e.target.value.toUpperCase())} />
+          <input className={`${inputCls} w-full`} placeholder="status" value={status} onChange={(e) => setStatus(e.target.value)} />
+          <input className={`${inputCls} min-w-0 w-full`} placeholder="path contains…" value={pathFilter} onChange={(e) => setPathFilter(e.target.value)} />
+          <button className={`${btnPrimary} w-full sm:w-auto`} type="submit">Filter</button>
         </form>
       </Card>
       <Card className="mt-4 !p-0">

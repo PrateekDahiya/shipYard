@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { api, setToken } from "@/lib/api";
-import { Card, btnPrimary, inputCls } from "@/components/ui";
+import { Card, inputCls } from "@/components/ui";
 
 export default function Register() {
   const [email, setEmail] = useState("");
@@ -23,25 +23,26 @@ export default function Register() {
   }
 
   return (
-    <div className="mx-auto mt-10 max-w-sm">
-      <h1 className="text-center text-2xl font-bold tracking-tight">Create your account</h1>
-      <p className="mt-1 text-center text-sm text-gray-500 dark:text-gray-400">Deploy your first app in minutes</p>
-      <Card className="mt-6">
-        <form onSubmit={submit} className="flex flex-col gap-3">
-          <label className="text-sm font-medium">Name <span className="font-normal text-gray-400">(optional)</span>
-            <input className={`${inputCls} mt-1 w-full`} placeholder="Jane" value={name} onChange={(e) => setName(e.target.value)} />
+    <div className="auth-card mx-auto mt-10 w-full max-w-[calc(100vw-2rem)] sm:max-w-[18rem]">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--accent-strong)]">New workspace</p>
+      <h1 className="mt-2 text-[30px] font-semibold leading-none tracking-[-0.04em]">Create your account</h1>
+      <p className="mt-2 text-sm text-[var(--muted)]">Deploy your first service in minutes</p>
+      <Card className="mt-6 w-full min-w-0 overflow-hidden p-5">
+        <form onSubmit={submit} className="flex min-w-0 flex-col gap-4">
+          <label className="min-w-0 text-sm font-medium text-[#263b45] dark:text-gray-200">Name <span className="font-normal text-[#8a9894]">(optional)</span>
+            <input className={`${inputCls} mt-1.5 min-w-0 w-full`} placeholder="Jane" value={name} onChange={(e) => setName(e.target.value)} />
           </label>
-          <label className="text-sm font-medium">Email
-            <input className={`${inputCls} mt-1 w-full`} placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <label className="min-w-0 text-sm font-medium text-[#263b45] dark:text-gray-200">Email
+            <input className={`${inputCls} mt-1.5 min-w-0 w-full`} placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
           </label>
-          <label className="text-sm font-medium">Password <span className="font-normal text-gray-400">(min 8 chars)</span>
-            <input className={`${inputCls} mt-1 w-full`} placeholder="••••••••" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <label className="min-w-0 text-sm font-medium text-[#263b45] dark:text-gray-200">Password <span className="font-normal text-[#8a9894]">(min 8 chars)</span>
+            <input className={`${inputCls} mt-1.5 min-w-0 w-full`} placeholder="••••••••" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </label>
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-          <button className={btnPrimary} type="submit">Register</button>
+          <button className="inline-flex w-full items-center justify-center bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[var(--accent-strong)]" type="submit">Create account</button>
         </form>
       </Card>
-      <p className="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">Have an account? <a className="font-medium text-indigo-600 dark:text-indigo-400" href="/login">Login</a></p>
+      <p className="mt-5 text-center text-sm text-[var(--muted)]">Have an account? <a className="font-semibold text-[var(--accent-strong)] hover:underline" href="/login">Sign in</a></p>
     </div>
   );
 }

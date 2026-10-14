@@ -10,15 +10,70 @@ html {
 
 :root {
   color-scheme: light;
+  --background: #f6f7f9;
+  --surface: #ffffff;
+  --surface-subtle: #f0f2f5;
+  --foreground: #182230;
+  --muted: #667085;
+  --subtle: #8b95a5;
+  --border: #d9dee7;
+  --border-strong: #c5ccd8;
+  --accent: #6f9bb3;
+  --accent-strong: #507b92;
+  --accent-subtle: #e7eef2;
+  --success: #237653;
+  --success-subtle: #e9f5ee;
+  --warning: #946a20;
+  --warning-subtle: #fbf3df;
+  --danger: #b13d48;
+  --danger-subtle: #fbecee;
 }
 
 .dark {
   color-scheme: dark;
+  --background: #0f141b;
+  --surface: #151c25;
+  --surface-subtle: #1b2430;
+  --foreground: #e6eaf0;
+  --muted: #9aa5b5;
+  --subtle: #758194;
+  --border: #2b3543;
+  --border-strong: #3a4656;
+  --accent: #6f9bb3;
+  --accent-strong: #83aabd;
+  --accent-subtle: #23313a;
+  --success: #6fc69a;
+  --success-subtle: #183628;
+  --warning: #e3bb69;
+  --warning-subtle: #3b301a;
+  --danger: #f08c96;
+  --danger-subtle: #452329;
+}
+
+@media (max-width: 640px) {
+  .auth-card {
+    width: min(calc(100% - 2rem), 18rem);
+    max-width: 100%;
+  }
+
+  main {
+    box-sizing: border-box;
+    width: min(calc(100vw - 2rem), 18rem) !important;
+    max-width: 18rem !important;
+    margin-inline: auto !important;
+    padding-inline: 0 !important;
+  }
 }
 
 body {
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+::selection {
+  background: rgb(54 89 200 / 0.2);
 }
 
 @layer utilities {
@@ -35,4 +90,29 @@ body {
 .log-scroll::-webkit-scrollbar-thumb {
   background: #4b5563;
   border-radius: 4px;
+}
+
+.auth-card {
+  width: min(calc(100vw - 2rem), 18rem);
+  max-width: calc(100vw - 2rem);
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+input,
+select,
+textarea {
+  border-radius: 0;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

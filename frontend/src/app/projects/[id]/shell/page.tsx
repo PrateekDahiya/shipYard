@@ -72,9 +72,9 @@ export default function Shell({ params }: { params: { id: string } }) {
         </pre>
       </Card>
       {connected && (
-        <form onSubmit={send} className="mt-3 flex gap-2">
-          <input className={`${inputCls} flex-1 font-mono`} placeholder="$ command" value={input} onChange={(e) => setInput(e.target.value)} autoFocus />
-          <button className={btnPrimary} type="submit">Send</button>
+        <form onSubmit={send} className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <input className={`${inputCls} min-w-0 w-full flex-1 font-mono`} placeholder="$ command" value={input} onChange={(e) => setInput(e.target.value)} autoFocus />
+          <button className={`${btnPrimary} w-full sm:w-auto`} type="submit">Send</button>
         </form>
       )}
     </div>

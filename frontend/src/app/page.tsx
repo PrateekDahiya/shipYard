@@ -1,461 +1,76 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { api } from "@/lib/api";
-import { Card, PageHeader, Empty, ErrorBanner, StatusBadge, btnPrimary, btnSecondary } from "@/components/ui";
-import { SectionLayout } from "@/components/project-nav";
+import { Card, Empty, ErrorBanner, HealthBadge, LiveLink, StatusBadge, Tabs, btnPrimary } from "@/components/ui";
+import { currentLiveUrl } from "@/lib/deployment";
 import { usePolling } from "@/lib/use-polling";
 
 type Overview = Awaited<ReturnType<typeof api.overview>>;
-type ViewKey = "overview" | "deployments" | "failures";
+type ViewKey = "overview" | "deployments" | "issues";
 
-const VIEWS: { key: ViewKey; label: string }[] = [
-  { key: "overview", label: "Overview" },
-  { key: "deployments", label: "Deployments" },
-  { key: "failures", label: "Failures" },
-];
-
-function initialView(): ViewKey {
-  if (typeof window === "undefined") return "overview";
-  try {
-    const v = new URLSearchParams(window.location.search).get("view");
-    return v === "deployments" || v === "failures" ? v : "overview";
-  } catch {
-    return "overview";
-  }
+function relativeTime(value: string) {
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
+  if (!Number.isFinite(seconds)) return "—";
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
 }
 
-function timeAgo(iso: string) {
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return iso;
-  const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString();
+function latestIsLive(latest: { status: string; instance_state?: string | null } | null) {
+  return !!latest && (latest.status === "SUCCESS" || latest.status === "RUNNING") && latest.instance_state === "RUNNING";
 }
 
-function instanceIsRunning(deployment: unknown) {
-  return (deployment as { instance_state?: string | null }).instance_state === "RUNNING";
-}
-
-function StatCard({ label, value, sub, accent }: { label: string; value: number; sub: string; accent: "gray" | "green" | "red" | "amber" }) {
-  const colors: Record<string, string> = {
-    gray: "text-gray-900 dark:text-gray-100",
-    green: "text-green-600 dark:text-green-400",
-    red: "text-red-600 dark:text-red-400",
-    amber: "text-amber-600 dark:text-amber-400",
-  };
-  const dots: Record<string, string> = {
-    gray: "bg-gray-400",
-    green: "bg-green-500",
-    red: "bg-red-500",
-    amber: "bg-amber-500",
-  };
-  return (
-    <Card>
-      <div className="flex items-center gap-2">
-        <span className={`h-2 w-2 rounded-full ${dots[accent]}`} />
-        <div className="text-sm text-gray-500 dark:text-gray-400">{label}</div>
-      </div>
-      <div className={`mt-1 text-3xl font-bold tracking-tight ${colors[accent]}`}>{value}</div>
-      <div className="mt-1 text-xs text-gray-400">{sub}</div>
-    </Card>
-  );
+function Metric({ label, value, foot, tone = "default" }: { label: string; value: number; foot: string; tone?: "default" | "success" | "danger" | "warning" }) {
+  const valueClass = { default: "text-[var(--foreground)]", success: "text-[var(--success)]", danger: "text-[var(--danger)]", warning: "text-[var(--warning)]" }[tone];
+  return <Card className="p-4 sm:p-5"><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">{label}</p><p className={`mt-3 font-mono text-3xl font-medium tracking-[-0.06em] ${valueClass}`}>{String(value).padStart(2, "0")}</p><p className="mt-1.5 text-xs text-[var(--muted)]">{foot}</p></Card>;
 }
 
 export default function Home() {
-  const router = useRouter();
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<ViewKey>(initialView);
+  const [view, setView] = useState<ViewKey>("overview");
 
-  usePolling(() => api.overview().then(setData).catch((e) => setError(e.message)), 10000);
+  usePolling(() => api.overview().then((overview) => { setData(overview); setError(null); }).catch((err) => setError(err instanceof Error ? err.message : "overview_failed")), 10000);
 
-  function selectView(next: ViewKey) {
-    setView(next);
-    try {
-      const url = new URL(window.location.href);
-      url.searchParams.set("view", next);
-      window.history.replaceState(null, "", url.toString());
-    } catch {
-      /* non-fatal */
-    }
-  }
-
+  const latestPerProject = useMemo(() => (data?.projects || []).filter((project) => project.latest).map((project) => ({ project, latest: project.latest! })).sort((a, b) => new Date(b.latest.created_at).getTime() - new Date(a.latest.created_at).getTime()), [data]);
   const stats = useMemo(() => {
-    if (!data) return null;
-    const neverDeployed = data.projects.filter((p) => !p.latest).length;
-    const server = data.projects.filter((p) => (p.deploy_type || "server") === "server").length;
-    const staticCount = data.projects.length - server;
-    const withLatest = data.projects.filter((p) => p.latest).length;
-    const livePct = withLatest ? Math.round((data.counts.live / withLatest) * 100) : 0;
-    const recentDeployments = data.projects
-      .filter((p) => p.latest)
-      .map((p) => ({ projectId: p.id, projectName: p.name, latest: p.latest! }))
-      .sort((a, b) => (a.latest.created_at < b.latest.created_at ? 1 : -1));
-    const succeeded = recentDeployments.filter((d) => d.latest.status === "SUCCESS" && instanceIsRunning(d.latest)).length;
-    const failedBuilds = recentDeployments.filter((d) => d.latest.status.includes("FAIL")).length;
-    const inProgress = recentDeployments.length - succeeded - failedBuilds;
-    const failuresByProject = data.recentFailures.reduce((acc, f) => {
-      acc[f.project_name] = (acc[f.project_name] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    const worstProject = Object.entries(failuresByProject).sort((a, b) => b[1] - a[1])[0] ?? null;
-    return { neverDeployed, server, staticCount, livePct, recentDeployments, succeeded, failedBuilds, inProgress, failuresByProject, worstProject };
+    const projects = data?.projects || [];
+    return {
+      services: projects.length,
+      live: projects.filter((project) => latestIsLive(project.latest)).length,
+      publicDown: projects.filter((project) => project.latest?.public_url && project.latest.public_health_state === "DOWN").length,
+      failed: projects.filter((project) => project.latest?.status.includes("FAIL")).length,
+      deploying: projects.filter((project) => project.latest && ["QUEUED", "CLONING", "BUILDING", "IMAGE_CREATED", "STARTING", "HEALTH_CHECKING"].includes(project.latest.status)).length,
+    };
   }, [data]);
 
-  if (error === "unauthorized") {
-    return (
-      <div>
-        <PageHeader title="Dashboard" sub="Your ShipYard at a glance." />
-        <Card>
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            Not logged in. <a className="font-medium text-indigo-600 underline dark:text-indigo-400" href="/login">Login</a> or{" "}
-            <a className="font-medium text-indigo-600 underline dark:text-indigo-400" href="/register">register</a> to see your projects.
-          </p>
-        </Card>
+  if (error === "unauthorized") return <div className="mx-auto max-w-xl py-16"><Card className="p-5"><p className="text-sm text-[var(--muted)]">Sign in to open the overview. <Link className="font-semibold text-[var(--accent-strong)] underline" href="/login">Go to sign in</Link></p></Card></div>;
+  if (error && !data) return <ErrorBanner message={error} />;
+  if (!data) return <div className="animate-pulse"><div className="h-8 w-48 bg-[var(--surface-subtle)]" /><div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">{[1, 2, 3, 4].map((item) => <div key={item} className="h-28 bg-[var(--surface-subtle)]" />)}</div><div className="mt-5 h-64 bg-[var(--surface-subtle)]" /></div>;
+
+  const issueCount = stats.publicDown + stats.failed;
+  const tabs = [{ key: "overview" as const, label: "Overview" }, { key: "deployments" as const, label: "Deployments", count: latestPerProject.length }, { key: "issues" as const, label: "Needs attention", count: issueCount }];
+  const healthPercent = stats.services ? Math.round((stats.live / stats.services) * 100) : 0;
+
+  return <div>
+    <div className="mb-7 flex flex-col items-stretch gap-4 sm:flex-row sm:items-end"><div className="min-w-0 flex-1"><p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--accent-strong)]">Workspace overview</p><h1 className="text-3xl font-semibold tracking-[-0.04em]">Fleet status</h1><p className="mt-2 text-sm text-[var(--muted)]">Services, deployments, and public signals at a glance.</p></div><Link href="/projects/new" className={`${btnPrimary} w-full sm:w-auto`}>+ New service</Link></div>
+    <Tabs tabs={tabs} active={view} onChange={setView} className="mb-6" />
+    {data.platformUrl && <div className="mb-5 flex flex-wrap items-center gap-3 border border-[var(--accent)]/30 bg-[var(--accent-subtle)] px-4 py-3 text-sm"><span className="h-2 w-2 bg-[var(--accent)]" /><span className="font-medium text-[var(--accent-strong)]">Platform public</span><a className="min-w-0 truncate font-mono text-xs text-[var(--accent-strong)] underline-offset-2 hover:underline" href={data.platformUrl} target="_blank" rel="noreferrer">{data.platformUrl}</a><span className="ml-auto text-xs text-[var(--muted)]">Funnel active</span></div>}
+    {error && <ErrorBanner message={error} />}
+
+    {view === "overview" && <>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><Metric label="Services online" value={stats.live} foot={`${stats.services} total`} tone="success" /><Metric label="Deploying" value={stats.deploying} foot="Build or startup in progress" tone="warning" /><Metric label="Public incidents" value={stats.publicDown} foot="Endpoint checks failing" tone={stats.publicDown ? "danger" : "default"} /><Metric label="Failed builds" value={stats.failed} foot="Across current services" tone={stats.failed ? "danger" : "default"} /></div>
+      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(300px,0.8fr)]">
+        <Card className="overflow-hidden bg-[#182230] text-white"><div className="p-5 sm:p-7"><div className="flex flex-wrap items-start justify-between gap-5"><div><p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">Fleet health</p><p className="mt-4 flex items-baseline gap-2"><span className="font-mono text-6xl font-medium tracking-[-0.08em]">{String(stats.live).padStart(2, "0")}</span><span className="text-sm text-white/45">/ {String(stats.services).padStart(2, "0")} services</span></p><p className="mt-2 text-xs text-white/55">{stats.live === stats.services && stats.services > 0 ? "All services are reporting healthy." : `${stats.services - stats.live} service${stats.services - stats.live === 1 ? "" : "s"} need attention or have not deployed.`}</p></div><div className="border border-white/15 px-3 py-2 text-xs text-white/65"><span className="mr-2 inline-block h-1.5 w-1.5 bg-[#6f9bb3]" />Signals live</div></div><div className="mt-8"><div className="flex justify-between text-[10px] font-semibold uppercase tracking-[0.12em] text-white/45"><span>Healthy services</span><span>{healthPercent}%</span></div><div className="mt-2 h-1.5 bg-white/15"><div className="h-full bg-[#6f9bb3] transition-all" style={{ width: `${healthPercent}%` }} /></div></div></div><div className="grid grid-cols-3 border-t border-white/10 bg-white/[0.03]"><div className="px-4 py-3"><p className="font-mono text-xl text-[#91afbf]">{String(stats.live).padStart(2, "0")}</p><p className="mt-1 text-[10px] uppercase tracking-[0.1em] text-white/40">Healthy</p></div><div className="border-x border-white/10 px-4 py-3"><p className="font-mono text-xl text-white/75">{String(stats.deploying).padStart(2, "0")}</p><p className="mt-1 text-[10px] uppercase tracking-[0.1em] text-white/40">In progress</p></div><div className="px-4 py-3"><p className="font-mono text-xl text-white/75">{String(issueCount).padStart(2, "0")}</p><p className="mt-1 text-[10px] uppercase tracking-[0.1em] text-white/40">Attention</p></div></div></Card>
+        <Card className="flex flex-col"><div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-4"><div><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Signal board</p><h2 className="mt-1 text-sm font-semibold">Needs attention</h2></div><span className="font-mono text-[10px] text-[var(--muted)]">{String(issueCount).padStart(2, "0")} open</span></div><div className="flex-1 divide-y divide-[var(--border)]">{data.projects.filter((project) => project.latest && (project.latest.status.includes("FAIL") || project.latest.public_health_state === "DOWN")).slice(0, 4).map((project) => <Link key={project.id} href={`/projects/${project.id}`} className="flex items-center gap-3 px-4 py-3 transition hover:bg-[var(--surface-subtle)]"><span className="flex h-6 w-6 shrink-0 items-center justify-center border border-[var(--danger)]/30 text-xs text-[var(--danger)]">!</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{project.name}</span><span className="mt-0.5 block truncate text-[10px] text-[var(--muted)]">{project.latest?.public_health_state === "DOWN" ? "Public endpoint not responding" : `Latest build ${project.latest?.status.toLowerCase().replace(/_/g, " ")}`}</span></span><span className="text-[10px] text-[var(--muted)]">Inspect →</span></Link>)}{issueCount === 0 && <div className="flex min-h-28 flex-col items-center justify-center px-4 text-center"><span className="flex h-7 w-7 items-center justify-center border border-[var(--success)]/30 text-sm text-[var(--success)]">✓</span><p className="mt-2 text-xs font-semibold">No open issues</p><p className="mt-1 text-[10px] text-[var(--muted)]">Builds and public endpoints look healthy.</p></div>}</div><Link href="/projects" className="border-t border-[var(--border)] px-4 py-3 text-xs font-medium text-[var(--accent-strong)] hover:bg-[var(--surface-subtle)]">Open services →</Link></Card>
       </div>
-    );
-  }
-  if (error) return <div><ErrorBanner message={error} /></div>;
-  if (!data || !stats) return <div><Card><p className="text-sm text-gray-500 dark:text-gray-400">Loading overview…</p></Card></div>;
-
-  const sidebar = (
-    <nav className="flex flex-col gap-0.5" aria-label="Dashboard navigation">
-      <div className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Views</div>
-      {VIEWS.map((v) => {
-        const count = v.key === "deployments" ? stats.recentDeployments.length : v.key === "failures" ? data.recentFailures.length : undefined;
-        const isActive = view === v.key;
-        return (
-          <button
-            key={v.key}
-            type="button"
-            onClick={() => selectView(v.key)}
-            aria-current={isActive ? "page" : undefined}
-            className={
-              isActive
-                ? "flex w-full items-center gap-2 rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white dark:bg-white dark:text-gray-900"
-                : "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-            }
-          >
-            {v.label}
-            {count !== undefined && count > 0 && (
-              <span className={`ml-auto rounded-full px-1.5 py-0.5 text-[11px] font-medium ${isActive ? "bg-white/20 text-white dark:bg-gray-900/10 dark:text-gray-900" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>
-                {count}
-              </span>
-            )}
-          </button>
-        );
-      })}
-      <div className="mb-1 mt-4 px-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Projects</div>
-      {data.projects.slice(0, 8).map((p) => (
-        <a
-          key={p.id}
-          href={`/projects/${p.id}`}
-          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-          title={p.repository_url || p.name}
-        >
-          <span className="min-w-0 flex-1 truncate">{p.name}</span>
-          {p.latest && (p.latest.status === "SUCCESS" || p.latest.status === "RUNNING") && instanceIsRunning(p.latest) && (
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-green-500" title="Live" />
-          )}
-          {p.latest && p.latest.status.includes("FAIL") && (
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" title="Failed" />
-          )}
-        </a>
-      ))}
-      {data.projects.length === 0 && (
-        <p className="px-3 py-2 text-xs text-gray-400">No projects yet.</p>
-      )}
-      {data.projects.length > 8 && (
-        <a href="/projects" className="px-3 py-2 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">
-          All {data.projects.length} projects →
-        </a>
-      )}
-    </nav>
-  );
-
-  return (
-    <SectionLayout sidebar={sidebar}>
-      <div>
-        <PageHeader
-          title="Dashboard"
-          sub="Live platform state — auto-refreshes every 5s."
-          actions={
-            <>
-              <a href="/projects" className={btnSecondary}>All projects</a>
-              <a href="/projects/new" className={btnPrimary}>+ New project</a>
-            </>
-          }
-        />
-
-        <div className="mb-4 flex gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-800 lg:hidden" aria-label="Dashboard views">
-          {VIEWS.map((v) => (
-            <button
-              key={v.key}
-              type="button"
-              onClick={() => selectView(v.key)}
-              aria-current={view === v.key ? "page" : undefined}
-              className={
-                view === v.key
-                  ? "whitespace-nowrap border-b-2 border-gray-900 px-3 py-2 text-sm font-medium dark:border-white"
-                  : "whitespace-nowrap px-3 py-2 text-sm text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
-              }
-            >
-              {v.label}
-            </button>
-          ))}
-        </div>
-
-        {data.platformUrl && (
-          <Card className="mb-4 border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/30">
-            <p className="flex flex-wrap items-center gap-2 text-sm text-green-900 dark:text-green-200">
-              <span className="h-2 w-2 rounded-full bg-green-600 dark:bg-green-400" />
-              <span className="font-semibold">This ShipYard is public:</span>
-              <a
-                href={data.platformUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="break-all font-mono text-xs underline-offset-2 hover:underline"
-              >
-                {data.platformUrl}
-              </a>
-            </p>
-          </Card>
-        )}
-
-        {view === "overview" && (
-          <>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <StatCard label="Projects" value={data.counts.total} sub={data.counts.total === 1 ? "1 project tracked" : `${data.counts.total} projects tracked`} accent="gray" />
-              <StatCard label="Live now" value={data.counts.live} sub={data.counts.total ? `${stats.livePct}% of deployed projects` : "no projects yet"} accent="green" />
-              <StatCard label="Failed latest" value={data.counts.failed} sub="newest build failed" accent="red" />
-              <StatCard label="Never deployed" value={stats.neverDeployed} sub="no builds yet" accent="amber" />
-            </div>
-
-            <Card className="mt-4">
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-                <span className="font-semibold text-gray-900 dark:text-gray-100">Fleet mix</span>
-                <span className="text-gray-500 dark:text-gray-400">
-                  <span className="font-mono font-semibold text-gray-900 dark:text-gray-100">{stats.server}</span> server
-                </span>
-                <span className="text-gray-500 dark:text-gray-400">
-                  <span className="font-mono font-semibold text-gray-900 dark:text-gray-100">{stats.staticCount}</span> static
-                </span>
-                <span className="ml-auto text-xs text-gray-400">
-                  {data.recentFailures.length === 0 ? "No failures on record — clean." : `${data.recentFailures.length} recent failure${data.recentFailures.length === 1 ? "" : "s"} need a look.`}
-                </span>
-              </div>
-            </Card>
-
-            <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-5">
-              <Card className="!p-0 xl:col-span-3">
-                <div className="flex items-center gap-2 px-4 pt-4">
-                  <h2 className="font-semibold">Projects</h2>
-                  <a href="/projects" className="ml-auto text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">
-                    Manage all →
-                  </a>
-                </div>
-                <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {data.projects.slice(0, 8).map((p) => (
-                    <li
-                      key={p.id}
-                      onClick={() => router.push(`/projects/${p.id}`)}
-                      className="flex cursor-pointer items-center gap-3 px-4 py-3 text-sm transition hover:bg-gray-50 dark:hover:bg-gray-800/50"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate font-semibold text-gray-900 dark:text-gray-100">{p.name}</span>
-                          {p.deploy_type && (
-                            <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                              {p.deploy_type}
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-0.5 truncate font-mono text-xs text-gray-400">
-                          {p.repository_url || "No repository configured"}
-                        </div>
-                      </div>
-                      {p.latest ? (
-                        <div className="flex shrink-0 flex-col items-end gap-1">
-                          <StatusBadge status={p.latest.status} />
-                          <span className="font-mono text-[11px] text-gray-400" title={p.latest.created_at}>
-                            {timeAgo(p.latest.created_at)}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="shrink-0 text-xs text-gray-400">never deployed</span>
-                      )}
-                    </li>
-                  ))}
-                  {data.projects.length === 0 && (
-                    <div className="px-4 pb-2">
-                      <Empty text="No projects yet." />
-                      <div className="pb-4 text-center">
-                        <a href="/projects/new" className={`${btnPrimary} inline-block`}>
-                          Create your first project
-                        </a>
-                      </div>
-                    </div>
-                  )}
-                </ul>
-              </Card>
-
-              <div className="flex flex-col gap-4 xl:col-span-2">
-                <Card className="!p-0">
-                  <div className="flex items-center gap-2 px-4 pt-4">
-                    <h2 className="font-semibold">Recent deployments</h2>
-                    <button type="button" onClick={() => selectView("deployments")} className="ml-auto text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">
-                      View all →
-                    </button>
-                  </div>
-                  <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {stats.recentDeployments.slice(0, 6).map(({ projectId, projectName, latest }) => (
-                      <li
-                        key={latest.id}
-                        onClick={() => router.push(`/projects/${projectId}/deployments/${latest.id}`)}
-                        className="flex cursor-pointer items-center gap-3 px-4 py-2.5 text-sm transition hover:bg-gray-50 dark:hover:bg-gray-800/50"
-                      >
-                        <span className="font-mono font-semibold text-indigo-600 dark:text-indigo-400">#{latest.id}</span>
-                        <span className="min-w-0 flex-1 truncate text-gray-600 dark:text-gray-300">{projectName}</span>
-                        <StatusBadge status={latest.status} />
-                        {latest.status === "SUCCESS" && latest.public_url && (
-                          <a
-                            href={latest.public_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            title="Public link — serves this live build over the internet"
-                            className="shrink-0 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
-                          >
-                            Public ↗
-                          </a>
-                        )}
-                        <span className="shrink-0 text-xs text-gray-400" title={latest.created_at}>
-                          {timeAgo(latest.created_at)}
-                        </span>
-                      </li>
-                    ))}
-                    {stats.recentDeployments.length === 0 && <Empty text="No deployments yet." />}
-                  </ul>
-                </Card>
-
-                <Card className="!p-0">
-                  <div className="flex items-center gap-2 px-4 pt-4">
-                    <h2 className="font-semibold">Recent failures</h2>
-                    <button type="button" onClick={() => selectView("failures")} className="ml-auto text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">
-                      View all →
-                    </button>
-                  </div>
-                  <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {data.recentFailures.slice(0, 5).map((f) => (
-                      <li
-                        key={f.id}
-                        onClick={() => router.push(`/projects/${f.project_id}/deployments/${f.id}`)}
-                        className="flex cursor-pointer items-center gap-3 px-4 py-2.5 text-sm transition hover:bg-gray-50 dark:hover:bg-gray-800/50"
-                      >
-                        <span className="font-mono font-semibold text-indigo-600 dark:text-indigo-400">#{f.id}</span>
-                        <span className="min-w-0 flex-1 truncate text-gray-600 dark:text-gray-300">{f.project_name}</span>
-                        <StatusBadge status={f.status} />
-                        <span className="shrink-0 font-mono text-[11px] text-gray-400" title={f.created_at}>
-                          {timeAgo(f.created_at)}
-                        </span>
-                      </li>
-                    ))}
-                    {data.recentFailures.length === 0 && <Empty text="No failures — clean record." />}
-                  </ul>
-                </Card>
-              </div>
-            </div>
-          </>
-        )}
-
-        {view === "deployments" && (
-          <>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <StatCard label="Tracked builds" value={stats.recentDeployments.length} sub="latest per project" accent="gray" />
-              <StatCard label="Succeeded" value={stats.succeeded} sub="currently healthy" accent="green" />
-              <StatCard label="Failed" value={stats.failedBuilds} sub="need attention" accent="red" />
-              <StatCard label="In progress" value={stats.inProgress} sub="queued or running" accent="amber" />
-            </div>
-            <Card className="mt-4 !p-0">
-              <h2 className="px-4 pt-4 font-semibold">Latest build per project</h2>
-              <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-                {stats.recentDeployments.map(({ projectId, projectName, latest }) => (
-                  <li
-                    key={latest.id}
-                    onClick={() => router.push(`/projects/${projectId}/deployments/${latest.id}`)}
-                    className="flex cursor-pointer items-center gap-3 px-4 py-3 text-sm transition hover:bg-gray-50 dark:hover:bg-gray-800/50"
-                  >
-                    <span className="font-mono font-semibold text-indigo-600 dark:text-indigo-400">#{latest.id}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium text-gray-900 dark:text-gray-100">{projectName}</div>
-                      <div className="truncate font-mono text-xs text-gray-400">{latest.commit_sha}</div>
-                    </div>
-                    <StatusBadge status={latest.status} />
-                    <span className="shrink-0 text-xs text-gray-400" title={latest.created_at}>
-                      {timeAgo(latest.created_at)}
-                    </span>
-                  </li>
-                ))}
-                {stats.recentDeployments.length === 0 && <Empty text="No deployments yet — deploy a project to see it here." />}
-              </ul>
-            </Card>
-          </>
-        )}
-
-        {view === "failures" && (
-          <>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-              <StatCard label="Recent failures" value={data.recentFailures.length} sub="last 10 builds" accent="red" />
-              <StatCard
-                label="Projects affected"
-                value={Object.keys(stats.failuresByProject).length}
-                sub={stats.worstProject ? `worst: ${stats.worstProject[0]} (${stats.worstProject[1]})` : "none — clean"}
-                accent="amber"
-              />
-              <StatCard label="Live now" value={data.counts.live} sub="still serving traffic" accent="green" />
-            </div>
-            <Card className="mt-4 !p-0">
-              <h2 className="px-4 pt-4 font-semibold">Failure history</h2>
-              <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-                {data.recentFailures.map((f) => (
-                  <li
-                    key={f.id}
-                    onClick={() => router.push(`/projects/${f.project_id}/deployments/${f.id}`)}
-                    className="flex cursor-pointer items-center gap-3 px-4 py-3 text-sm transition hover:bg-gray-50 dark:hover:bg-gray-800/50"
-                  >
-                    <span className="font-mono font-semibold text-indigo-600 dark:text-indigo-400">#{f.id}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium text-gray-900 dark:text-gray-100">{f.project_name}</div>
-                      <div className="truncate font-mono text-xs text-gray-400">{f.commit_sha}</div>
-                    </div>
-                    <StatusBadge status={f.status} />
-                    <span className="shrink-0 font-mono text-[11px] text-gray-400" title={f.created_at}>
-                      {timeAgo(f.created_at)}
-                    </span>
-                  </li>
-                ))}
-                {data.recentFailures.length === 0 && <Empty text="No failures — clean record." />}
-              </ul>
-            </Card>
-            {data.recentFailures.length > 0 && (
-              <Card className="mt-4 border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
-                <p className="text-sm text-amber-900 dark:text-amber-200">
-                  Fix forward: open a failed build to read the timeline and logs, then redeploy the commit or push a fix.
-                  A newer successful build automatically becomes the live one.
-                </p>
-              </Card>
-            )}
-          </>
-        )}
-      </div>
-    </SectionLayout>
-  );
+      <Card className="mt-5 overflow-hidden"><div className="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--border)] px-4 py-4 sm:px-5"><div><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Service register</p><h2 className="mt-1 text-sm font-semibold">Your services <span className="ml-1 font-mono text-xs font-normal text-[var(--muted)]">{stats.services}</span></h2></div><Link href="/projects" className="text-xs font-medium text-[var(--accent-strong)] hover:underline">View all →</Link></div><div className="hidden grid-cols-[minmax(160px,1.2fr)_minmax(100px,0.7fr)_minmax(120px,0.8fr)_minmax(100px,0.6fr)_auto] gap-3 border-b border-[var(--border)] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)] md:grid"><span>Service</span><span>Runtime</span><span>Latest deploy</span><span>Public signal</span><span>Live site</span></div><div className="divide-y divide-[var(--border)]">{data.projects.slice(0, 7).map((project) => { const liveUrl = currentLiveUrl(project.latest); return <div key={project.id} className="grid gap-2 px-4 py-3.5 transition hover:bg-[var(--surface-subtle)] sm:px-5 md:grid-cols-[minmax(160px,1.2fr)_minmax(100px,0.7fr)_minmax(120px,0.8fr)_minmax(100px,0.6fr)_auto] md:items-center md:gap-3"><Link href={`/projects/${project.id}`} className="flex min-w-0 items-center gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center bg-[var(--surface-subtle)] font-mono text-xs font-semibold text-[var(--muted)]">{project.name.slice(0, 1).toUpperCase()}</span><span className="min-w-0"><span className="block truncate text-xs font-semibold">{project.name}</span><span className="mt-0.5 block truncate text-[10px] text-[var(--muted)]">{project.repository_url || "Repository not connected"}</span></span></Link><span className="text-[10px] text-[var(--muted)]">{project.deploy_type || "server"} <span className="font-mono text-[var(--subtle)]">· {project.branch || "main"}</span></span><span className="flex items-center gap-2 text-[10px] text-[var(--muted)]">{project.latest ? <><StatusBadge status={project.latest.status} /><span>{relativeTime(project.latest.created_at)}</span></> : <span>No deployment yet</span>}</span><span className="text-[10px] text-[var(--muted)]">{project.latest?.public_url ? <HealthBadge state={project.latest.public_health_state} /> : "Private"}</span><LiveLink href={liveUrl} /></div>; })}{data.projects.length === 0 && <div className="p-8 text-center"><Empty text="No services in your fleet yet." /><Link href="/projects/new" className={`${btnPrimary} mt-2`}>Create your first service</Link></div>}</div></Card>
+      <Card className="mt-5 overflow-hidden"><div className="border-b border-[var(--border)] px-4 py-4"><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Recent movement</p><h2 className="mt-1 text-sm font-semibold">Deployment activity</h2></div><div className="px-4 py-1">{latestPerProject.slice(0, 6).map(({ project, latest }) => <div key={latest.id} className="flex items-center gap-3 border-b border-[var(--border)] py-3.5 last:border-0"><Link href={`/projects/${project.id}/deployments/${latest.id}`} className="flex min-w-0 flex-1 gap-3"><span className={`mt-1.5 h-2 w-2 shrink-0 ${latest.status === "SUCCESS" ? "bg-[var(--success)]" : latest.status.includes("FAIL") ? "bg-[var(--danger)]" : "bg-[var(--warning)]"}`} /><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className="truncate text-xs font-semibold">{project.name}</span><span className="shrink-0 font-mono text-[10px] text-[var(--muted)]">{relativeTime(latest.created_at)}</span></span><span className="mt-1 flex items-center gap-2"><StatusBadge status={latest.status} /><span className="truncate font-mono text-[10px] text-[var(--muted)]">{latest.commit_sha.slice(0, 8)}</span></span></span></Link><LiveLink href={currentLiveUrl(latest)} /></div>)}{latestPerProject.length === 0 && <Empty text="Deployment activity will appear here." />}</div></Card>
+    </>}
+    {view === "deployments" && <Card className="overflow-hidden"><div className="border-b border-[var(--border)] px-5 py-4"><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Latest per service</p><h2 className="mt-1 text-sm font-semibold">Deployment ledger</h2></div>{latestPerProject.length ? <div className="divide-y divide-[var(--border)]">{latestPerProject.map(({ project, latest }) => <div key={latest.id} className="grid gap-2 px-5 py-4 hover:bg-[var(--surface-subtle)] sm:grid-cols-[minmax(150px,0.8fr)_minmax(180px,1.2fr)_auto_auto_auto] sm:items-center"><Link href={`/projects/${project.id}/deployments/${latest.id}`} className="text-xs font-semibold">{project.name}</Link><span className="font-mono text-[10px] text-[var(--muted)]">{latest.commit_sha.slice(0, 10)} · {project.branch || "main"}</span><StatusBadge status={latest.status} /><span className="text-[10px] text-[var(--muted)]">{relativeTime(latest.created_at)}</span><LiveLink href={currentLiveUrl(latest)} /></div>)}</div> : <Empty text="No deployments yet." />}</Card>}
+    {view === "issues" && <div className="grid gap-5 lg:grid-cols-2"><Card className="p-5"><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Build incidents</p><h2 className="mt-1 text-sm font-semibold">Recent failures</h2>{data.recentFailures.length ? <div className="mt-3 divide-y divide-[var(--border)]">{data.recentFailures.map((failure) => <Link key={failure.id} href={`/projects/${failure.project_id}/deployments/${failure.id}`} className="flex items-center gap-3 py-3"><span className="font-mono text-xs text-[var(--danger)]">#{failure.id}</span><span className="min-w-0 flex-1 truncate text-xs font-semibold">{failure.project_name}</span><StatusBadge status={failure.status} /><span className="text-[10px] text-[var(--muted)]">{relativeTime(failure.created_at)}</span></Link>)}</div> : <Empty text="No recent build incidents." />}</Card><Card className="p-5"><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">External reachability</p><h2 className="mt-1 text-sm font-semibold">Public endpoint incidents</h2>{stats.publicDown ? <div className="mt-3 divide-y divide-[var(--border)]">{data.projects.filter((project) => project.latest?.public_health_state === "DOWN").map((project) => <Link key={project.id} href={`/projects/${project.id}`} className="flex items-center gap-3 py-3"><span className="flex h-6 w-6 items-center justify-center border border-[var(--danger)]/30 text-xs text-[var(--danger)]">!</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{project.name}</span><span className="block truncate font-mono text-[10px] text-[var(--muted)]">{project.latest?.public_url}</span></span><HealthBadge state="DOWN" /></Link>)}</div> : <Empty text="No public endpoint incidents." />}</Card></div>}
+  </div>;
 }

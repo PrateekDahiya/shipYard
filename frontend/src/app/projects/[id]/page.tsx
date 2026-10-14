@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { api, type AuditEntry, type Deployment, type EnvVar, type Project } from "@/lib/api";
 import { parseEnvBulk } from "@/lib/envBulk";
-import { Card, PageHeader, Empty, ErrorBanner, btnPrimary, btnSecondary, inputCls } from "@/components/ui";
+import { Card, Empty, ErrorBanner, Tabs, btnPrimary, btnSecondary, inputCls } from "@/components/ui";
 import { ProjectLayout } from "@/components/project-nav";
 import DeploymentLogs from "@/components/deployment-logs";
 import ContainerLogs from "@/components/container-logs";
+import { isDeploymentActive } from "@/lib/deployment";
 
 const VALID_TABS = ["overview", "build", "environment", "logs", "team", "activity"] as const;
 type TabKey = (typeof VALID_TABS)[number];
@@ -19,10 +20,6 @@ function initialTab(): TabKey {
   } catch {
     return "overview";
   }
-}
-
-function isDeploymentActive(status: string) {
-  return ["QUEUED", "CLONING", "BUILDING", "IMAGE_CREATED", "STARTING", "HEALTH_CHECKING", "RUNNING"].includes(status);
 }
 
 function SectionHeader({ title, desc, action }: { title: string; desc?: string; action?: React.ReactNode }) {
@@ -322,53 +319,30 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
   ];
 
   return (
-    <ProjectLayout id={params.id} active="overview" projectName={project.name} tab={tab} onTabSelect={selectTab}>
-      <PageHeader
-        title={project.name}
-        sub={[project.repository_url, `branch ${project.branch}`].filter(Boolean).join(" · ") || "No repository configured yet"}
-        actions={
-          <>
-            <button className={btnSecondary} onClick={deployLatest}>Deploy latest</button>
-            <button className="rounded-lg border border-red-300 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/40" onClick={deleteProject}>Delete</button>
-          </>
-        }
-        back={{ href: "/projects", label: "All projects" }}
-      />
-      {error && <ErrorBanner message={error} />}
-      <div role="tablist" aria-label="Project sections" className="mb-4 flex gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-800">
-        {tabs.map(({ key: tabKey, label, count }) => (
-          <button
-            key={tabKey}
-            role="tab"
-            aria-selected={tab === tabKey}
-            onClick={() => selectTab(tabKey)}
-            className={tab === tabKey
-              ? "flex items-center gap-1.5 whitespace-nowrap border-b-2 border-gray-900 px-3 py-2 text-sm font-medium dark:border-white"
-              : "flex items-center gap-1.5 whitespace-nowrap px-3 py-2 text-sm text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"}
-          >
-            {label}
-            {count !== undefined && count > 0 && (
-              <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                {count}
-              </span>
-            )}
-          </button>
-        ))}
+    <ProjectLayout id={params.id} active="overview">
+      <div className="mb-5 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+        <p className="min-w-0 flex-1 truncate font-mono text-xs text-[#7b8a86] dark:text-gray-400">
+          {[project.repository_url, `branch ${project.branch}`].filter(Boolean).join(" · ") || "No repository configured yet"}
+        </p>
+        <button className={`${btnSecondary} w-full sm:w-auto`} onClick={deployLatest}>Deploy latest</button>
+        <button className="w-full border border-red-300 px-3.5 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/40 sm:w-auto" onClick={deleteProject}>Delete</button>
       </div>
+      {error && <ErrorBanner message={error} />}
+      <Tabs className="mb-5" tabs={tabs} active={tab} onChange={selectTab} />
 
       {tab === "overview" && (
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
           <SectionHeader title="General" desc="Rename the project. URLs and deploys keep working." />
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <input
-              className={`${inputCls} flex-1 font-mono`}
+              className={`${inputCls} min-w-0 w-full flex-1 font-mono`}
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
               placeholder="my-api"
               maxLength={100}
             />
-            <button className={btnPrimary} onClick={saveName}>
+            <button className={`${btnPrimary} w-full sm:w-auto`} onClick={saveName}>
               Save name
             </button>
           </div>
@@ -378,7 +352,7 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
            <SectionHeader title="Live deployment" desc="Newest successful build serving traffic." />
            {latestDeployment ? (
              <p className="mt-2 text-sm">
-               <a className="font-medium text-indigo-600 dark:text-indigo-400" href={latestDeployment.url} target="_blank" rel="noreferrer">
+               <a className="font-medium text-[var(--accent-strong)] hover:underline" href={latestDeployment.url} target="_blank" rel="noreferrer">
                  public ↗
                </a>{" "}
                <span className="break-all font-mono text-xs">{latestDeployment.url}</span>
@@ -393,9 +367,9 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
             title="Branch & auto-deploy"
             desc="Pushes to this branch deploy automatically via webhook when enabled."
           />
-          <div className="mt-3 flex gap-2">
-            <input className={`${inputCls} flex-1 font-mono`} value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="branch" />
-            <button className={btnPrimary} onClick={saveBranch}>Save</button>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <input className={`${inputCls} min-w-0 w-full flex-1 font-mono`} value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="branch" />
+            <button className={`${btnPrimary} w-full sm:w-auto`} onClick={saveBranch}>Save</button>
           </div>
           <button className={`${btnSecondary} mt-2`} onClick={toggleAutoDeploy}>{autoDeploy ? "Disable auto-deploy" : "Enable auto-deploy"}</button>
           {autoDeploy && <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Pushes to <span className="font-mono">{branch}</span> deploy automatically via webhook.</p>}
@@ -513,9 +487,9 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
             </button>
           }
         />
-        <form onSubmit={saveEnv} className="mt-3 flex gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
-          <input className={`${inputCls} w-40 font-mono`} placeholder="KEY" value={key} onChange={(e) => setKey(e.target.value)} />
-          <input className={`${inputCls} min-w-0 flex-1 font-mono`} placeholder="value" type={showValues.__new__ ? "text" : "password"} value={value} onChange={(e) => setValue(e.target.value)} />
+        <form onSubmit={saveEnv} className="mt-3 flex flex-col gap-2 border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50 sm:flex-row">
+          <input className={`${inputCls} w-full font-mono sm:w-40`} placeholder="KEY" value={key} onChange={(e) => setKey(e.target.value)} />
+          <input className={`${inputCls} min-w-0 w-full flex-1 font-mono`} placeholder="value" type={showValues.__new__ ? "text" : "password"} value={value} onChange={(e) => setValue(e.target.value)} />
           <button type="button" className={`${btnSecondary} shrink-0 !py-2`} title={showValues.__new__ ? "Hide value" : "Show value"} onClick={() => setShowValues({...showValues, __new__: !showValues.__new__})}>
             {showValues.__new__ ? (
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
@@ -523,14 +497,14 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
             )}
           </button>
-          <button className={`${btnPrimary} shrink-0`} type="submit">Add</button>
+          <button className={`${btnPrimary} w-full sm:w-auto`} type="submit">Add</button>
         </form>
         {showBulk && <BulkImport projectId={params.id} onDone={load} onError={setError} />}
         <ul className="mt-3 divide-y divide-gray-100 dark:divide-gray-800">
           {env.map((v) => {
             const isEditing = editingKey === v.key;
             return (
-              <li key={v.key} className="flex items-center gap-2 py-2.5 text-sm sm:gap-3">
+              <li key={v.key} className="flex flex-wrap items-center gap-2 py-2.5 text-sm sm:gap-3">
                 {isEditing ? (
                   <>
                     <input className={`${inputCls} w-36 shrink-0 font-mono sm:w-44`} value={editKey} onChange={(e) => setEditKey(e.target.value)} aria-label="Variable key" />
@@ -547,14 +521,14 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
                   </>
                 ) : (
                   <>
-                    <span className="w-32 shrink-0 truncate font-mono font-medium sm:w-44" title={v.key}>{v.key}</span>
+                    <span className="w-full truncate font-mono font-medium sm:w-44" title={v.key}>{v.key}</span>
                     <span className="min-w-0 flex-1 truncate font-mono text-xs text-gray-500 dark:text-gray-400" title={showValues[v.key] ? (actualValues[v.key] || v.value) : undefined}>
                       {showValues[v.key] ? (actualValues[v.key] || v.value || "••••••••") : "••••••••"}
                     </span>
                     <span className="hidden shrink-0 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-500 md:inline dark:bg-gray-800 dark:text-gray-400">
                       {v.scope}
                     </span>
-                    <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                    <div className="flex w-full shrink-0 items-center gap-1.5 sm:ml-auto sm:w-auto">
                       <button className={`${btnSecondary} !px-2.5 !py-1.5`} title={showValues[v.key] ? "Hide value" : "Reveal value"} onClick={() => toggleShow(v.key)}>
                         {showValues[v.key] ? (
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
@@ -670,7 +644,7 @@ function BulkImport({ projectId, onDone, onError }: { projectId: string; onDone:
   }
 
   return (
-    <form onSubmit={importAll} className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/50">
+      <form onSubmit={importAll} className="mt-3 border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/50">
       <p className="text-sm text-gray-600 dark:text-gray-300">Paste <span className="font-mono">KEY=value</span> lines (one per line, <span className="font-mono">#</span> comments and <span className="font-mono">export</span> prefixes allowed). Existing keys are overwritten; all imported as secrets.</p>
       <textarea className={`${inputCls} mt-2 h-32 w-full font-mono`} placeholder={"API_KEY=abc123\nDATABASE_URL=postgres://...\n# comment\n export DEBUG=true"} value={text} onChange={(e) => setText(e.target.value)} />
       <div className="mt-2"><button className={btnPrimary} type="submit">Import all</button></div>
@@ -709,14 +683,14 @@ function Members({ projectId, onError }: { projectId: string; onError: (m: strin
         ))}
         {members.length === 0 && <Empty text="No members yet — invite your first teammate below." />}
       </ul>
-      <form onSubmit={(e) => { e.preventDefault(); api.addMember(projectId, { email, role }).then(() => { setEmail(""); load(); }).catch((err) => onError(err.message)); }} className="mt-3 flex gap-2">
-        <input className={`${inputCls} min-w-0 flex-1`} placeholder="teammate email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <select className={`${inputCls} shrink-0`} value={role} onChange={(e) => setRole(e.target.value)}>
+      <form onSubmit={(e) => { e.preventDefault(); api.addMember(projectId, { email, role }).then(() => { setEmail(""); load(); }).catch((err) => onError(err.message)); }} className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <input className={`${inputCls} min-w-0 w-full flex-1`} placeholder="teammate email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <select className={`${inputCls} w-full shrink-0 sm:w-auto`} value={role} onChange={(e) => setRole(e.target.value)}>
           <option value="viewer">viewer</option>
           <option value="developer">developer</option>
           <option value="admin">admin</option>
         </select>
-        <button className={`${btnPrimary} shrink-0`} type="submit">Add</button>
+        <button className={`${btnPrimary} w-full sm:w-auto`} type="submit">Add</button>
       </form>
     </div>
   );

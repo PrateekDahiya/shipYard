@@ -31,13 +31,27 @@ export default function LogViewer({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return entries.filter(
-      (e) =>
+    return entries.map((entry, index) => ({ entry, index })).filter(
+      ({ entry: e }) =>
         (stream === "all" || e.stream === stream) &&
         (source === "all" || e.source === source) &&
         (!q || e.text.toLowerCase().includes(q) || e.source.toLowerCase().includes(q))
     );
   }, [entries, query, stream, source]);
+
+  async function copyVisible() {
+    await navigator.clipboard.writeText(filtered.map(({ entry }) => entry.text).join("\n"));
+  }
+
+  function downloadVisible() {
+    const blob = new Blob([filtered.map(({ entry }) => entry.text).join("\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "shipyard-log.txt";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
 
   useEffect(() => {
     if (follow && entries.length > prevTotal.current) {
@@ -103,6 +117,8 @@ export default function LogViewer({
         >
           {follow ? "● Following" : "Follow"}
         </button>
+        <button type="button" onClick={() => void copyVisible()} disabled={!filtered.length} className={`${inputCls} shrink-0 !px-3 !py-1.5 !text-xs disabled:opacity-40`}>Copy</button>
+        <button type="button" onClick={downloadVisible} disabled={!filtered.length} className={`${inputCls} shrink-0 !px-3 !py-1.5 !text-xs disabled:opacity-40`}>Download</button>
         <span className="ml-auto text-xs text-gray-400">
           {filtered.length} of {entries.length} line{entries.length === 1 ? "" : "s"}
         </span>
@@ -118,9 +134,9 @@ export default function LogViewer({
         ) : filtered.length === 0 ? (
           <p className="text-gray-400">No lines match the current filters.</p>
         ) : (
-          filtered.map((e, i) => (
-            <div key={i} className="flex gap-3 whitespace-pre">
-              <span className="w-10 shrink-0 select-none text-right text-gray-600">{i + 1}</span>
+          filtered.map(({ entry: e, index }) => (
+            <div key={`${e.source}-${e.stream}-${index}`} className="flex gap-3 whitespace-pre">
+              <span className="w-10 shrink-0 select-none text-right text-gray-600">{index + 1}</span>
               <span className="shrink-0 select-none text-gray-500">[{e.source}/{e.stream}]</span>
               <span className={e.stream === "stderr" ? "text-red-300" : textColor}>{e.text}</span>
             </div>

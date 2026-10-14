@@ -2,25 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { api, type Deployment } from "@/lib/api";
-import { Card, PageHeader, Empty, ErrorBanner, StatusBadge, btnPrimary, inputCls } from "@/components/ui";
+import { Card, PageHeader, Empty, ErrorBanner, HealthBadge, StatusBadge, btnPrimary, inputCls } from "@/components/ui";
 import { ProjectLayout } from "@/components/project-nav";
 import { usePolling } from "@/lib/use-polling";
+import { formatDeploymentTime, isCurrentLiveDeployment, isDeploymentActive, isDeploymentFailed } from "@/lib/deployment";
 
 type Filter = "all" | "success" | "failed" | "active";
-
-function isFailed(status: string) {
-  return status.includes("FAIL");
-}
-
-function isActive(status: string) {
-  return ["QUEUED", "CLONING", "BUILDING", "IMAGE_CREATED", "STARTING", "HEALTH_CHECKING", "RUNNING"].includes(status);
-}
-
-function formatTime(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString();
-}
 
 export default function Deployments({ params }: { params: { id: string } }) {
   const [deployments, setDeployments] = useState<Deployment[]>([]);
@@ -38,7 +25,7 @@ export default function Deployments({ params }: { params: { id: string } }) {
     }
   }
 
-  usePolling(load, 5000, deployments.some((d) => isActive(d.status)) || deployments.length === 0, params.id);
+  usePolling(load, 5000, deployments.some((d) => isDeploymentActive(d.status)) || deployments.length === 0, params.id);
 
   async function deploy(e: React.FormEvent) {
     e.preventDefault();
@@ -69,7 +56,7 @@ export default function Deployments({ params }: { params: { id: string } }) {
   // actually serving traffic — older SUCCESS rows keep their historic
   // live_url in the DB, so they must NOT render a Live link.
   const currentLiveId = useMemo(
-    () => deployments.find((d) => (d.status === "SUCCESS" || d.status === "RUNNING") && d.instance_state === "RUNNING")?.id ?? null,
+    () => deployments.find((d) => isCurrentLiveDeployment(d))?.id ?? null,
     [deployments]
   );
   const currentLive = useMemo(
@@ -83,16 +70,16 @@ export default function Deployments({ params }: { params: { id: string } }) {
     let active = 0;
     for (const d of deployments) {
       if (d.status === "SUCCESS") succeeded += 1;
-      else if (isFailed(d.status)) failed += 1;
-      else if (isActive(d.status)) active += 1;
+      else if (isDeploymentFailed(d.status)) failed += 1;
+      else if (isDeploymentActive(d.status)) active += 1;
     }
     return { total: deployments.length, succeeded, failed, active };
   }, [deployments]);
 
   const visible = useMemo(() => {
     if (filter === "success") return deployments.filter((d) => d.status === "SUCCESS");
-    if (filter === "failed") return deployments.filter((d) => isFailed(d.status));
-    if (filter === "active") return deployments.filter((d) => isActive(d.status));
+    if (filter === "failed") return deployments.filter((d) => isDeploymentFailed(d.status));
+    if (filter === "active") return deployments.filter((d) => isDeploymentActive(d.status));
     return deployments;
   }, [deployments, filter]);
 
@@ -104,12 +91,7 @@ export default function Deployments({ params }: { params: { id: string } }) {
   ];
 
   return (
-    <ProjectLayout
-      id={params.id}
-      active="deployments"
-      deployments={deployments}
-       currentLiveId={deployments.find((d) => (d.status === "SUCCESS" || d.status === "RUNNING") && d.instance_state === "RUNNING")?.id ?? null}
-    >
+    <ProjectLayout id={params.id} active="deployments">
     <div>
       <PageHeader
         title="Deployments"
@@ -118,25 +100,25 @@ export default function Deployments({ params }: { params: { id: string } }) {
       />
       {error && <ErrorBanner message={error} />}
 
-       {currentLive && (currentLive.public_url || currentLive.live_url) && (
-         <Card className="mb-4 border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/30">
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="h-2 w-2 rounded-full bg-green-600 dark:bg-green-400" />
-             <span className="font-semibold text-green-900 dark:text-green-200">
+         {currentLive && (currentLive.public_url || currentLive.live_url) && (
+          <Card className="mb-4 border-[var(--success)]/25 bg-[var(--success-subtle)]">
+           <div className="flex flex-wrap items-center gap-2 text-sm">
+             <span className="h-2 w-2 bg-[var(--success)]" />
+              <span className="font-semibold text-[var(--success)]">
                Live: #{currentLive.id}
              </span>
-             {currentLive.public_url && <span className={currentLive.public_health_state === "UP" ? "text-xs text-green-800 dark:text-green-300" : "text-xs text-amber-800 dark:text-amber-300"}>Public: {currentLive.public_health_state || "CHECKING"}</span>}
-            <a
+             {currentLive.public_url && <HealthBadge state={currentLive.public_health_state} />}
+             <a
               href={currentLive.public_url || currentLive.live_url || "#"}
               target="_blank"
               rel="noreferrer"
-              className="max-w-full truncate font-mono text-xs text-green-800 underline-offset-2 hover:underline dark:text-green-300"
+               className="max-w-full truncate font-mono text-xs text-[var(--success)] underline-offset-2 hover:underline"
             >
               {currentLive.public_url || currentLive.live_url}
             </a>
             <a
               href={`/projects/${params.id}/deployments/${currentLive.id}`}
-              className="ml-auto text-xs font-medium text-green-800 hover:underline dark:text-green-300"
+               className="ml-auto text-xs font-medium text-[var(--success)] hover:underline"
             >
               Open deployment →
             </a>
@@ -144,12 +126,12 @@ export default function Deployments({ params }: { params: { id: string } }) {
         </Card>
       )}
 
-      <Card>
-        <h2 className="font-semibold">New deployment</h2>
-        <form onSubmit={deploy} className="mt-3 flex flex-wrap gap-2">
-          <input className={`${inputCls} w-32 font-mono`} placeholder="branch" value={branch} onChange={(e) => setBranch(e.target.value)} />
-          <input className={`${inputCls} min-w-0 flex-1 font-mono`} placeholder="commit SHA (optional — latest branch commit is used)" value={commitSha} onChange={(e) => setCommitSha(e.target.value)} />
-          <button className={btnPrimary} type="submit" disabled={deploying}>
+       <Card>
+         <h2 className="font-semibold">New deployment</h2>
+        <form onSubmit={deploy} className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <input className={`${inputCls} w-full font-mono sm:w-32`} placeholder="branch" value={branch} onChange={(e) => setBranch(e.target.value)} />
+          <input className={`${inputCls} min-w-0 w-full flex-1 font-mono`} placeholder="commit SHA (optional — latest branch commit is used)" value={commitSha} onChange={(e) => setCommitSha(e.target.value)} />
+          <button className={`${btnPrimary} w-full sm:w-auto`} type="submit" disabled={deploying}>
             {deploying ? "Deploying…" : "Deploy"}
           </button>
         </form>
@@ -163,14 +145,14 @@ export default function Deployments({ params }: { params: { id: string } }) {
             onClick={() => setFilter(key)}
             className={
               filter === key
-                ? "rounded-full bg-gray-900 px-3 py-1.5 text-xs font-medium text-white dark:bg-white dark:text-gray-900"
-                : "rounded-full border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                 ? "border border-[var(--foreground)] bg-[var(--foreground)] px-3 py-1.5 text-xs font-medium text-white"
+                 : "border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--muted)] hover:bg-[var(--surface-subtle)]"
             }
           >
             {label}
           </button>
         ))}
-        <span className="ml-auto text-xs text-gray-400">
+           <span className="w-full text-xs text-gray-400 sm:ml-auto sm:w-auto">
           Only the newest successful deployment is live — older rows are history.
         </span>
       </div>
@@ -183,7 +165,7 @@ export default function Deployments({ params }: { params: { id: string } }) {
               <li key={d.id} className="px-4 py-3 text-sm">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                   <a
-                    className="font-mono font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                     className="font-mono font-semibold text-[var(--accent-strong)] hover:underline"
                     href={`/projects/${params.id}/deployments/${d.id}`}
                   >
                     #{d.id}
@@ -208,7 +190,7 @@ export default function Deployments({ params }: { params: { id: string } }) {
                     )
                   )}
                   <span className="ml-auto hidden text-xs text-gray-400 sm:inline" title={d.created_at}>
-                    {formatTime(d.created_at)}
+                    {formatDeploymentTime(d.created_at)}
                   </span>
                 </div>
                 {d.commit_message && (
@@ -219,13 +201,13 @@ export default function Deployments({ params }: { params: { id: string } }) {
                 )}
                 <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                   <a
-                    className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                     className="font-medium text-[var(--accent-strong)] hover:underline"
                     href={`/projects/${params.id}/deployments/${d.id}`}
                   >
                     Open →
                   </a>
                   <button
-                    className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                     className="font-medium text-[var(--accent-strong)] hover:underline"
                     title="Deploy this commit again as a new deployment"
                     onClick={() => redeploy(d.id)}
                   >
@@ -243,7 +225,7 @@ export default function Deployments({ params }: { params: { id: string } }) {
                    )}
                    {d.public_url && <span className={`text-xs ${d.public_health_state === "UP" ? "text-green-700 dark:text-green-300" : d.public_health_state === "DOWN" ? "text-red-700 dark:text-red-300" : "text-gray-400"}`}>Public {d.public_health_state || "CHECKING"}</span>}
                   <span className="ml-auto text-xs text-gray-400 sm:hidden" title={d.created_at}>
-                    {formatTime(d.created_at)}
+                    {formatDeploymentTime(d.created_at)}
                   </span>
                 </div>
               </li>

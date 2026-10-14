@@ -9,7 +9,7 @@ async function overview(userId) {
   const [projects] = await getPool().query(
     `SELECT p.id, p.name, p.repository_url, p.branch, p.deploy_type FROM projects p
      WHERE p.owner_id = ? OR EXISTS (SELECT 1 FROM project_members m WHERE m.project_id = p.id AND m.user_id = ?)
-     ORDER BY p.updated_at DESC LIMIT 20`,
+     ORDER BY p.updated_at DESC LIMIT 200`,
     [userId, userId]
   );
   if (projects.length === 0) {

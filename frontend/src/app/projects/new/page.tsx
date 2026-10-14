@@ -62,7 +62,7 @@ export default function NewProject() {
 
       <form onSubmit={create}>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Card>
+          <Card className="min-w-0">
             <h2 className="font-semibold text-gray-900 dark:text-gray-100">General</h2>
             <div className="mt-3 space-y-3">
               <label className="block text-sm">
@@ -107,7 +107,7 @@ export default function NewProject() {
             </div>
           </Card>
 
-          <Card>
+          <Card className="min-w-0">
             <h2 className="font-semibold text-gray-900 dark:text-gray-100">Deploy defaults</h2>
             <div className="mt-3 grid grid-cols-2 gap-2">
               {(["server", "static"] as const).map((t) => (
@@ -210,14 +210,14 @@ export default function NewProject() {
           </Card>
         </div>
 
-        <div className="mt-4 flex items-center justify-end gap-3">
+        <div className="mt-4 flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-end">
           <a
             href="/projects"
-            className="text-sm font-medium text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+            className="text-center text-sm font-medium text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 sm:text-left"
           >
             Cancel
           </a>
-          <button type="submit" className={btnPrimary} disabled={saving || !name.trim()}>
+          <button type="submit" className={`${btnPrimary} justify-center`} disabled={saving || !name.trim()}>
             {saving ? "Creating…" : "Create & open project"}
           </button>
         </div>

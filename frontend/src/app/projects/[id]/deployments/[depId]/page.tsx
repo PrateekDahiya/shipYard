@@ -2,31 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api, apiBase, type Deployment, type DeployEvent } from "@/lib/api";
-import { Card, PageHeader, ErrorBanner, StatusBadge, btnPrimary, btnSecondary } from "@/components/ui";
+import { Card, PageHeader, ErrorBanner, HealthBadge, StatusBadge, btnPrimary, btnSecondary } from "@/components/ui";
 import { ProjectLayout } from "@/components/project-nav";
 import DeploymentLogs from "@/components/deployment-logs";
 import { usePolling } from "@/lib/use-polling";
-
-function isFailed(status: string) {
-  return status.includes("FAIL");
-}
-
-function isActive(status: string) {
-  return ["QUEUED", "CLONING", "BUILDING", "IMAGE_CREATED", "STARTING", "HEALTH_CHECKING", "RUNNING"].includes(status);
-}
-
-function formatTime(iso: string | null) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString();
-}
+import { formatDeploymentTime, isCurrentLiveDeployment, isDeploymentActive, isDeploymentFailed } from "@/lib/deployment";
 
 function stageDot(status: string) {
   const s = status.toUpperCase();
   if (s.includes("FAIL")) return "bg-red-500";
   if (s === "SUCCESS" || s === "DONE" || s === "COMPLETE") return "bg-green-500";
-  if (["RUNNING", "STARTING", "HEALTH_CHECKING", "BUILDING", "CLONING"].includes(s)) return "bg-indigo-500";
+   if (["RUNNING", "STARTING", "HEALTH_CHECKING", "BUILDING", "CLONING"].includes(s)) return "bg-[var(--accent)]";
   return "bg-gray-300 dark:bg-gray-600";
 }
 
@@ -34,7 +20,6 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
   const [deployment, setDeployment] = useState<Deployment | null>(null);
   const [events, setEvents] = useState<DeployEvent[]>([]);
   const [currentLiveId, setCurrentLiveId] = useState<number | null>(null);
-  const [siblingDeps, setSiblingDeps] = useState<Deployment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
 
@@ -47,15 +32,14 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
       ]);
       setDeployment(depRes.deployment);
       setEvents(eventsRes.events);
-      const current = listRes.deployments.find((d) => (d.status === "SUCCESS" || d.status === "RUNNING") && d.instance_state === "RUNNING") ?? null;
+       const current = listRes.deployments.find((d) => isCurrentLiveDeployment(d)) ?? null;
       setCurrentLiveId(current ? current.id : null);
-      setSiblingDeps(listRes.deployments);
     } catch (err) {
       setError(err instanceof Error ? err.message : "load_failed");
     }
   }
 
-  usePolling(load, 5000, !deployment || isActive(deployment.status), `${params.id}:${params.depId}`);
+  usePolling(load, 5000, !deployment || isDeploymentActive(deployment.status), `${params.id}:${params.depId}`);
 
   useEffect(() => {
     const token = typeof window !== "undefined" ? window.localStorage.getItem("shipyard_token") : null;
@@ -87,7 +71,7 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
   }
 
   async function cancel() {
-    if (!deployment || !isActive(deployment.status)) return;
+    if (!deployment || !isDeploymentActive(deployment.status)) return;
     if (!window.confirm(`Cancel deployment #${deployment.id}?`)) return;
     setActionBusy(true);
     try {
@@ -113,20 +97,14 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
   if (!deployment) return <div><Card><p className="text-sm text-gray-500 dark:text-gray-400">Loading deployment…</p></Card></div>;
 
   return (
-    <ProjectLayout
-      id={params.id}
-      active="deployments"
-      deployments={siblingDeps}
-      currentLiveId={currentLiveId}
-      activeDeploymentId={Number(params.depId)}
-    >
+    <ProjectLayout id={params.id} active="deployments">
     <div>
       <PageHeader
         title={`Deployment #${deployment.id}`}
         sub={`${deployment.commit_sha.slice(0, 8)} · ${deployment.branch}`}
         actions={
           <>
-            {isActive(deployment.status) && (
+            {isDeploymentActive(deployment.status) && (
               <button className={btnSecondary} onClick={cancel} disabled={actionBusy}>
                 {actionBusy ? "Working…" : "Cancel"}
               </button>
@@ -157,7 +135,7 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
             . The Live URL below now serves that newer build.
           </p>
         </Card>
-      ) : isFailed(deployment.status) ? (
+      ) : isDeploymentFailed(deployment.status) ? (
         <Card className="mb-4 border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30">
           <p className="text-sm text-red-900 dark:text-red-200">
             This deployment failed. Check the timeline and logs below, then redeploy this commit or push a fix.
@@ -172,13 +150,13 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
             {deployment.commit_sha}
           </span>
            {(deployment.public_url || deployment.live_url) && (
-            <a className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400" href={deployment.public_url || deployment.live_url || "#"} target="_blank" rel="noreferrer">
+             <a className="text-sm font-medium text-[var(--accent-strong)] hover:underline" href={deployment.public_url || deployment.live_url || "#"} target="_blank" rel="noreferrer">
               {deployment.public_url ? "Public ↗" : isCurrentLive ? "Live ↗" : "Project live URL ↗"}
             </a>
            )}
-           {deployment.public_url && <span className={`text-sm ${deployment.public_health_state === "UP" ? "text-green-700 dark:text-green-300" : deployment.public_health_state === "DOWN" ? "text-red-700 dark:text-red-300" : "text-gray-500 dark:text-gray-400"}`}>Public URL: {deployment.public_health_state || "CHECKING"}</span>}
+           {deployment.public_url && <HealthBadge state={deployment.public_health_state} />}
           {deployment.direct_url && (
-            <a className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400" href={deployment.direct_url} target="_blank" rel="noreferrer">
+             <a className="text-sm font-medium text-[var(--accent-strong)] hover:underline" href={deployment.direct_url} target="_blank" rel="noreferrer">
               Direct ↗
             </a>
           )}
@@ -196,15 +174,15 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
           </div>
           <div>
             <dt className="text-xs text-gray-400">Created</dt>
-            <dd className="text-xs" title={deployment.created_at}>{formatTime(deployment.created_at)}</dd>
+            <dd className="text-xs" title={deployment.created_at}>{formatDeploymentTime(deployment.created_at)}</dd>
           </div>
           <div>
             <dt className="text-xs text-gray-400">Started</dt>
-            <dd className="text-xs" title={deployment.started_at || ""}>{formatTime(deployment.started_at)}</dd>
+            <dd className="text-xs" title={deployment.started_at || ""}>{formatDeploymentTime(deployment.started_at)}</dd>
           </div>
           <div>
             <dt className="text-xs text-gray-400">Finished</dt>
-            <dd className="text-xs" title={deployment.finished_at || ""}>{formatTime(deployment.finished_at)}</dd>
+            <dd className="text-xs" title={deployment.finished_at || ""}>{formatDeploymentTime(deployment.finished_at)}</dd>
           </div>
         </dl>
         <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
@@ -220,7 +198,7 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
             {events.map((e, i) => (
               <li key={i} className="flex gap-3 border-l-2 border-gray-200 py-1.5 pl-3 font-mono text-xs dark:border-gray-700">
                 <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${stageDot(e.status)}`} />
-                <span className="w-36 shrink-0 text-gray-500 dark:text-gray-400">{formatTime(e.created_at)}</span>
+                <span className="w-36 shrink-0 text-gray-500 dark:text-gray-400">{formatDeploymentTime(e.created_at)}</span>
                 <span className="min-w-0 flex-1 truncate" title={`${e.stage} — ${e.status}${e.message ? ` (${e.message})` : ""}`}>
                   <span className="font-medium">{e.stage}</span>
                   <span className="text-gray-500"> — {e.status}</span>
@@ -234,7 +212,7 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
         )}
       </Card>
 
-          <DeploymentLogs projectId={params.id} deploymentId={params.depId} poll={isActive(deployment.status)} />
+          <DeploymentLogs projectId={params.id} deploymentId={params.depId} poll={isDeploymentActive(deployment.status)} />
     </div>
     </ProjectLayout>
   );
