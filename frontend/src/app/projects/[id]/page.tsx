@@ -101,8 +101,8 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
       const deps = await api.listDeployments(params.id);
       const latest = deps.deployments?.[0];
       setAllDeployments(deps.deployments || []);
-      const latestUrl = latest?.public_url || latest?.live_url;
-      if (latestUrl) setLatestDeployment({ url: latestUrl });
+       const latestUrl = latest?.instance_state === "RUNNING" ? (latest.public_url || latest.live_url) : null;
+       setLatestDeployment(latestUrl ? { url: latestUrl } : null);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "load_failed");

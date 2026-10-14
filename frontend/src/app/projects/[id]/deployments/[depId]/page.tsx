@@ -47,7 +47,7 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
       ]);
       setDeployment(depRes.deployment);
       setEvents(eventsRes.events);
-      const current = listRes.deployments.find((d) => d.status === "SUCCESS" || d.status === "RUNNING") ?? null;
+      const current = listRes.deployments.find((d) => (d.status === "SUCCESS" || d.status === "RUNNING") && d.instance_state === "RUNNING") ?? null;
       setCurrentLiveId(current ? current.id : null);
       setSiblingDeps(listRes.deployments);
     } catch (err) {
@@ -171,11 +171,12 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
           <span className="font-mono text-xs text-gray-500 dark:text-gray-400" title={deployment.commit_sha}>
             {deployment.commit_sha}
           </span>
-          {(deployment.public_url || deployment.live_url) && (
+           {(deployment.public_url || deployment.live_url) && (
             <a className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400" href={deployment.public_url || deployment.live_url || "#"} target="_blank" rel="noreferrer">
               {deployment.public_url ? "Public ↗" : isCurrentLive ? "Live ↗" : "Project live URL ↗"}
             </a>
-          )}
+           )}
+           {deployment.public_url && <span className={`text-sm ${deployment.public_health_state === "UP" ? "text-green-700 dark:text-green-300" : deployment.public_health_state === "DOWN" ? "text-red-700 dark:text-red-300" : "text-gray-500 dark:text-gray-400"}`}>Public URL: {deployment.public_health_state || "CHECKING"}</span>}
           {deployment.direct_url && (
             <a className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400" href={deployment.direct_url} target="_blank" rel="noreferrer">
               Direct ↗

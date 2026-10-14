@@ -5,7 +5,12 @@ const { assertTransition, isTerminal } = require('../deployment/stateMachine');
 const metrics = require('../monitoring/prometheus');
 
 async function getById(id) {
-  const [rows] = await getPool().query('SELECT * FROM deployments WHERE id = ? LIMIT 1', [id]);
+  const [rows] = await getPool().query(
+    `SELECT d.*, (SELECT i.state FROM application_instances i WHERE i.deployment_id = d.id ORDER BY i.id DESC LIMIT 1) AS instance_state,
+            (SELECT i.public_health_state FROM application_instances i WHERE i.deployment_id = d.id ORDER BY i.id DESC LIMIT 1) AS public_health_state
+       FROM deployments d WHERE d.id = ? LIMIT 1`,
+    [id]
+  );
   return rows[0] || null;
 }
 
@@ -15,7 +20,10 @@ async function setPublicUrl(id, url) {
 }
 
 async function listForProject(projectId, limit = 50) {
-  const [rows] = await getPool().query('SELECT * FROM deployments WHERE project_id = ? ORDER BY id DESC LIMIT ?', [
+  const [rows] = await getPool().query(
+    `SELECT d.*, (SELECT i.state FROM application_instances i WHERE i.deployment_id = d.id ORDER BY i.id DESC LIMIT 1) AS instance_state,
+            (SELECT i.public_health_state FROM application_instances i WHERE i.deployment_id = d.id ORDER BY i.id DESC LIMIT 1) AS public_health_state
+       FROM deployments d WHERE d.project_id = ? ORDER BY d.id DESC LIMIT ?`, [
     projectId,
     Math.min(limit, 200),
   ]);

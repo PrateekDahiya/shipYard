@@ -94,7 +94,7 @@ async function ensureDeploymentTunnel({ projectId, projectSlug, deploymentId, co
       'sh', '-c',
       'tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock & ' +
       'until test -S /var/run/tailscale/tailscaled.sock; do sleep 1; done; ' +
-      'tailscale up --authkey="$TS_AUTHKEY" --hostname="$TS_HOSTNAME" --accept-dns=false; ' +
+      'if ! tailscale status --json 2>/dev/null | grep -q \'"BackendState":"Running"\'; then tailscale up --authkey="$TS_AUTHKEY" --hostname="$TS_HOSTNAME" --accept-dns=false; fi; ' +
       `tailscale funnel --bg --https=443 http://${ip}:${appPort}; tail -f /dev/null`,
     ];
     const sidecar = await docker.startContainer({

@@ -32,8 +32,9 @@ function logger() {
 async function listWatched(pool) {
   const [rows] = await pool.query(
     `SELECT i.id AS instance_id, i.container_id, i.state, i.deployment_id,
+            i.public_health_state,
             d.app_port AS dep_port, p.app_port AS project_port,
-            p.healthcheck_path, p.deploy_type
+            p.healthcheck_path, p.deploy_type, d.public_url
      FROM application_instances i
      JOIN deployments d ON d.id = i.deployment_id
      JOIN projects p ON p.id = i.project_id
@@ -50,9 +51,36 @@ function probeTarget(row) {
   return { port, path };
 }
 
+function publicProbeUrl(row) {
+  const path = row.deploy_type === 'static' ? '/' : row.healthcheck_path || '/health';
+  return `${String(row.public_url).replace(/\/+$/, '')}${path}`;
+}
+
+async function checkPublic(pool, health, row, publicFails, threshold) {
+  if (!row.public_url) {
+    return;
+  }
+  const probe = await health.probeOnce(publicProbeUrl(row), { timeoutMs: 10000, expectedStatus: 200 });
+  if (probe.ok) {
+    publicFails.delete(row.instance_id);
+    await pool.query("UPDATE application_instances SET public_health_state = 'UP', public_health_checked_at = NOW(), public_health_latency_ms = ? WHERE id = ?", [probe.latencyMs, row.instance_id]);
+    if (row.public_health_state === 'DOWN') {
+      await pool.query('INSERT INTO deployment_events (deployment_id, stage, status, message) VALUES (?, ?, ?, ?)', [row.deployment_id, 'PUBLIC_HEALTH', 'RECOVERED', 'public URL responding again']);
+    }
+    return;
+  }
+  const count = (publicFails.get(row.instance_id) || 0) + 1;
+  publicFails.set(row.instance_id, count);
+  await pool.query("UPDATE application_instances SET public_health_state = ?, public_health_checked_at = NOW(), public_health_latency_ms = ? WHERE id = ?", [count >= threshold ? 'DOWN' : 'UNKNOWN', probe.latencyMs, row.instance_id]);
+  if (count >= threshold && row.public_health_state !== 'DOWN') {
+    await pool.query('INSERT INTO deployment_events (deployment_id, stage, status, message) VALUES (?, ?, ?, ?)', [row.deployment_id, 'PUBLIC_HEALTH', 'DOWN', `public URL failed ${count} consecutive probes`]);
+    logger().warn('public_watchdog_unhealthy', { instanceId: row.instance_id, deploymentId: row.deployment_id, failures: count, url: row.public_url });
+  }
+}
+
 // One pass over all watched instances. `fails` maps instance_id ->
 // consecutive probe failures (injectable for tests). Never throws.
-async function checkOnce({ pool, docker, health, fails }) {
+async function checkOnce({ pool, docker, health, fails, publicFails = new Map() }) {
   let rows = [];
   try {
     rows = await listWatched(pool);
@@ -65,6 +93,11 @@ async function checkOnce({ pool, docker, health, fails }) {
   let recovered = 0;
   for (const row of rows) {
     try {
+      try {
+        await checkPublic(pool, health, row, publicFails, threshold);
+      } catch (e) {
+        logger().warn('public_watchdog_check_failed', { instanceId: row.instance_id, deploymentId: row.deployment_id, message: e && e.message });
+      }
       const ip = await docker.containerIp(row.container_id);
       const { port, path } = probeTarget(row);
       const probe = await health.probeOnce(`http://${ip}:${port}${path}`, { timeoutMs: 5000, expectedStatus: 200 });
@@ -126,6 +159,7 @@ function startHealthWatchdog() {
   const docker = require('../runtime/docker');
   const health = require('../runtime/healthcheck');
   const fails = new Map();
+  const publicFails = new Map();
   const log = logger();
   let stopped = false;
   let lastListErrorAt = 0;
@@ -135,7 +169,7 @@ function startHealthWatchdog() {
       return;
     }
     try {
-      await checkOnce({ pool: getPool(), docker, health, fails });
+       await checkOnce({ pool: getPool(), docker, health, fails, publicFails });
     } catch (e) {
       // checkOnce guards everything internally; this is last-resort hygiene.
       const now = Date.now();

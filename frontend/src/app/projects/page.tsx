@@ -33,7 +33,7 @@ export default function Projects() {
           try {
             const deps = await api.listDeployments(String(p.id));
             const latest = deps.deployments?.[0];
-            const url = latest?.public_url || latest?.live_url;
+            const url = latest?.instance_state === "RUNNING" ? (latest.public_url || latest.live_url) : null;
             return url ? { id: String(p.id), url } : null;
           } catch {
             return null;

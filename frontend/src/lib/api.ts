@@ -69,6 +69,8 @@ export interface Deployment {
   triggered_by: number | null;
   trigger_type: string;
   status: string;
+  instance_state?: "STARTING" | "RUNNING" | "UNHEALTHY" | "STOPPED" | null;
+  public_health_state?: "UNKNOWN" | "UP" | "DOWN" | null;
   image_tag: string | null;
   container_id: string | null;
   live_url: string | null;

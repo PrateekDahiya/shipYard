@@ -40,6 +40,10 @@ function timeAgo(iso: string) {
   return new Date(iso).toLocaleDateString();
 }
 
+function instanceIsRunning(deployment: unknown) {
+  return (deployment as { instance_state?: string | null }).instance_state === "RUNNING";
+}
+
 function StatCard({ label, value, sub, accent }: { label: string; value: number; sub: string; accent: "gray" | "green" | "red" | "amber" }) {
   const colors: Record<string, string> = {
     gray: "text-gray-900 dark:text-gray-100",
@@ -95,7 +99,7 @@ export default function Home() {
       .filter((p) => p.latest)
       .map((p) => ({ projectId: p.id, projectName: p.name, latest: p.latest! }))
       .sort((a, b) => (a.latest.created_at < b.latest.created_at ? 1 : -1));
-    const succeeded = recentDeployments.filter((d) => d.latest.status === "SUCCESS").length;
+    const succeeded = recentDeployments.filter((d) => d.latest.status === "SUCCESS" && instanceIsRunning(d.latest)).length;
     const failedBuilds = recentDeployments.filter((d) => d.latest.status.includes("FAIL")).length;
     const inProgress = recentDeployments.length - succeeded - failedBuilds;
     const failuresByProject = data.recentFailures.reduce((acc, f) => {
@@ -158,7 +162,7 @@ export default function Home() {
           title={p.repository_url || p.name}
         >
           <span className="min-w-0 flex-1 truncate">{p.name}</span>
-          {p.latest && (p.latest.status === "SUCCESS" || p.latest.status === "RUNNING") && (
+          {p.latest && (p.latest.status === "SUCCESS" || p.latest.status === "RUNNING") && instanceIsRunning(p.latest) && (
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-green-500" title="Live" />
           )}
           {p.latest && p.latest.status.includes("FAIL") && (

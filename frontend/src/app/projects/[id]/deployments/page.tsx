@@ -69,7 +69,7 @@ export default function Deployments({ params }: { params: { id: string } }) {
   // actually serving traffic — older SUCCESS rows keep their historic
   // live_url in the DB, so they must NOT render a Live link.
   const currentLiveId = useMemo(
-    () => deployments.find((d) => d.status === "SUCCESS" || d.status === "RUNNING")?.id ?? null,
+    () => deployments.find((d) => (d.status === "SUCCESS" || d.status === "RUNNING") && d.instance_state === "RUNNING")?.id ?? null,
     [deployments]
   );
   const currentLive = useMemo(
@@ -108,7 +108,7 @@ export default function Deployments({ params }: { params: { id: string } }) {
       id={params.id}
       active="deployments"
       deployments={deployments}
-      currentLiveId={deployments.find((d) => d.status === "SUCCESS" || d.status === "RUNNING")?.id ?? null}
+       currentLiveId={deployments.find((d) => (d.status === "SUCCESS" || d.status === "RUNNING") && d.instance_state === "RUNNING")?.id ?? null}
     >
     <div>
       <PageHeader
@@ -122,9 +122,10 @@ export default function Deployments({ params }: { params: { id: string } }) {
          <Card className="mb-4 border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/30">
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="h-2 w-2 rounded-full bg-green-600 dark:bg-green-400" />
-            <span className="font-semibold text-green-900 dark:text-green-200">
-              Live: #{currentLive.id}
-            </span>
+             <span className="font-semibold text-green-900 dark:text-green-200">
+               Live: #{currentLive.id}
+             </span>
+             {currentLive.public_url && <span className={currentLive.public_health_state === "UP" ? "text-xs text-green-800 dark:text-green-300" : "text-xs text-amber-800 dark:text-amber-300"}>Public: {currentLive.public_health_state || "CHECKING"}</span>}
             <a
               href={currentLive.public_url || currentLive.live_url || "#"}
               target="_blank"
@@ -230,7 +231,7 @@ export default function Deployments({ params }: { params: { id: string } }) {
                   >
                     Redeploy
                   </button>
-                  {isCurrent && (d.public_url || d.live_url) && (
+                   {isCurrent && (d.public_url || d.live_url) && (
                     <a
                       className="font-medium text-green-700 hover:underline dark:text-green-300"
                       href={d.public_url || d.live_url || "#"}
@@ -239,7 +240,8 @@ export default function Deployments({ params }: { params: { id: string } }) {
                     >
                       {d.public_url ? "Public ↗" : "Live ↗"}
                     </a>
-                  )}
+                   )}
+                   {d.public_url && <span className={`text-xs ${d.public_health_state === "UP" ? "text-green-700 dark:text-green-300" : d.public_health_state === "DOWN" ? "text-red-700 dark:text-red-300" : "text-gray-400"}`}>Public {d.public_health_state || "CHECKING"}</span>}
                   <span className="ml-auto text-xs text-gray-400 sm:hidden" title={d.created_at}>
                     {formatTime(d.created_at)}
                   </span>
