@@ -39,7 +39,10 @@ async function containerLogs(projectId, docker, tail = 200) {
     return { running: false };
   }
   const lines = [];
-  for (const [stream, body] of [['stdout', text.stdout], ['stderr', text.stderr]]) {
+  const chunks = Array.isArray(text.ordered)
+    ? text.ordered
+    : [['stdout', text.stdout], ['stderr', text.stderr]].map(([stream, body]) => ({ stream, text: body }));
+  for (const { stream, text: body } of chunks) {
     for (const line of String(body || '').split('\n').filter((l) => l.length > 0).slice(-safeTail)) {
       lines.push(`[container/${stream}] ${line.slice(0, 4000)}`);
     }

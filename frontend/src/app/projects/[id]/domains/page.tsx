@@ -24,7 +24,7 @@ export default function Domains({ params }: { params: { id: string } }) {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [params.id]);
 
   async function add(e: React.FormEvent) {
     e.preventDefault();

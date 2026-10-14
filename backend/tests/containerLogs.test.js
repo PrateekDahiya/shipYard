@@ -60,13 +60,21 @@ test('happy path prefixes streams and caps tail', async () => {
 describe('demuxBuffer (docker multiplex framing)', () => {
   test('splits stdout/stderr frames', () => {
     const r = demuxBuffer(Buffer.concat([frame(1, 'hello\n'), frame(2, 'boom\n'), frame(1, 'bye\n')]));
-    expect(r).toEqual({ stdout: 'hello\nbye\n', stderr: 'boom\n' });
+    expect(r).toEqual({
+      stdout: 'hello\nbye\n',
+      stderr: 'boom\n',
+      ordered: [
+        { stream: 'stdout', text: 'hello\n' },
+        { stream: 'stderr', text: 'boom\n' },
+        { stream: 'stdout', text: 'bye\n' },
+      ],
+    });
   });
 
   test('plain text falls back to stdout (TTY mode)', () => {
-    expect(demuxBuffer(Buffer.from('just text\n'))).toEqual({ stdout: 'just text\n', stderr: '' });
-    expect(demuxBuffer(Buffer.from('x'))).toEqual({ stdout: 'x', stderr: '' });
-    expect(demuxBuffer(Buffer.alloc(0))).toEqual({ stdout: '', stderr: '' });
+    expect(demuxBuffer(Buffer.from('just text\n'))).toEqual({ stdout: 'just text\n', stderr: '', ordered: [{ stream: 'stdout', text: 'just text\n' }] });
+    expect(demuxBuffer(Buffer.from('x'))).toEqual({ stdout: 'x', stderr: '', ordered: [{ stream: 'stdout', text: 'x' }] });
+    expect(demuxBuffer(Buffer.alloc(0))).toEqual({ stdout: '', stderr: '', ordered: [] });
   });
 
   test('truncated final frame is salvaged, garbage stops parsing', () => {
@@ -78,7 +86,25 @@ describe('demuxBuffer (docker multiplex framing)', () => {
     // Truncated frame is salvaged (trailing bytes ride along); the bogus
     // 0x09 header then stops parsing instead of emitting garbage frames.
     expect(r.stderr.startsWith('pa')).toBe(true);
+    expect(r.ordered.map((entry) => entry.stream)).toEqual(['stdout', 'stderr']);
   });
+});
+
+test('framed logs preserve stdout/stderr order in live output', async () => {
+  mockQuery([[{ container_id: 'abc123', deployment_id: 7 }]]);
+  const docker = {
+    containerLogsText: jest.fn().mockResolvedValue(demuxBuffer(Buffer.concat([
+      frame(1, 'request\n'),
+      frame(2, 'startup\n'),
+      frame(1, 'request-2\n'),
+    ]))),
+  };
+  const r = await service.containerLogs(512, docker);
+  expect(r.lines).toEqual([
+    '[container/stdout] request',
+    '[container/stderr] startup',
+    '[container/stdout] request-2',
+  ]);
 });
 
 test('tail is clamped to 1..1000', async () => {

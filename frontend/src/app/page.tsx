@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { Card, PageHeader, Empty, ErrorBanner, StatusBadge, btnPrimary, btnSecondary } from "@/components/ui";
 import { SectionLayout } from "@/components/project-nav";
+import { usePolling } from "@/lib/use-polling";
 
 type Overview = Awaited<ReturnType<typeof api.overview>>;
 type ViewKey = "overview" | "deployments" | "failures";
@@ -70,14 +71,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<ViewKey>(initialView);
 
-  useEffect(() => {
-    api.overview().then(setData).catch((e) => setError(e.message));
-    const interval = setInterval(() => {
-      api.overview().then(setData).catch((e) => setError(e.message));
-    }, 5000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  usePolling(() => api.overview().then(setData).catch((e) => setError(e.message)), 10000);
 
   function selectView(next: ViewKey) {
     setView(next);

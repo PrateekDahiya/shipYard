@@ -38,7 +38,7 @@ const OLD_ENV = { ...process.env };
 beforeEach(() => {
   jest.resetModules();
   jest.clearAllMocks();
-  process.env = { ...OLD_ENV, CLOUDFLARE_ENABLED: 'true', TUNNEL_DISCOVERY_TIMEOUT_MS: '200', TUNNEL_DISCOVERY_POLL_MS: '10' };
+  process.env = { ...OLD_ENV, PUBLIC_TUNNELS_ENABLED: 'true', PUBLIC_TUNNEL_PROVIDER: 'cloudflare', TUNNEL_DISCOVERY_TIMEOUT_MS: '200', TUNNEL_DISCOVERY_POLL_MS: '10' };
   tunnelService = require('../src/services/tunnelService');
   mockDb();
 });
@@ -48,7 +48,7 @@ afterEach(() => {
 });
 
 test('disabled via env -> null without touching docker', async () => {
-  process.env.CLOUDFLARE_ENABLED = 'false';
+  process.env.PUBLIC_TUNNELS_ENABLED = 'false';
   const docker = fakeDocker();
   const r = await tunnelService.ensureDeploymentTunnel({ projectId: 1, deploymentId: 2, containerId: 'abc', appPort: 3000, docker });
   expect(r).toBeNull();
@@ -79,6 +79,24 @@ test('discovery also reads cloudflared stderr', async () => {
   });
   await expect(tunnelService.ensureDeploymentTunnel({ projectId: 1, deploymentId: 2, containerId: 'abc123', appPort: 3001, docker }))
     .resolves.toBe('https://stderr-only.trycloudflare.com');
+});
+
+test('tailscale mode keeps a project URL stable and persists state by project', async () => {
+  process.env.PUBLIC_TUNNEL_PROVIDER = 'tailscale';
+  process.env.TAILSCALE_AUTHKEY = 'tskey-auth-test';
+  process.env.TAILSCALE_TAILNET = 'example.ts.net';
+  const docker = fakeDocker();
+  const url = await tunnelService.ensureDeploymentTunnel({ projectId: 7, projectSlug: 'My App', deploymentId: 9, containerId: 'abc123', appPort: 3001, docker });
+  expect(url).toBe('https://shipyard-my-app.example.ts.net');
+  expect(docker.startContainer).toHaveBeenCalledWith(expect.objectContaining({
+    image: 'tailscale/tailscale:stable',
+    binds: ['shipyard-tailscale-project-7:/var/lib/tailscale'],
+    capAdd: ['NET_ADMIN'],
+    cmd: expect.arrayContaining(['sh', '-c']),
+  }));
+  const [[sql, params]] = queryMock.mock.calls.filter(([q]) => String(q).startsWith('UPDATE deployments SET public_url'));
+  expect(sql).toBeDefined();
+  expect(params).toEqual(['https://shipyard-my-app.example.ts.net', 9]);
 });
 
 test('fake-docker without tunnel methods (worker.test style) never throws', async () => {

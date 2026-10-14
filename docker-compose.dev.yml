@@ -68,6 +68,10 @@ services:
       REDIS_PORT: ${REDIS_PORT:-6379}
       SHIPYARD_WORKDIR: /tmp/shipyard-builds
       SHIPYARD_BASE_DOMAIN: ${SHIPYARD_BASE_DOMAIN:-shipyard.localhost}
+      PUBLIC_TUNNEL_PROVIDER: ${PUBLIC_TUNNEL_PROVIDER:-cloudflare}
+      PUBLIC_TUNNELS_ENABLED: ${PUBLIC_TUNNELS_ENABLED:-true}
+      TAILSCALE_AUTHKEY: ${TAILSCALE_AUTHKEY:-}
+      TAILSCALE_TAILNET: ${TAILSCALE_TAILNET:-}
       # Worker runs in a container: probe the host-published port via the
       # Docker host, not localhost (which would be the worker itself).
       SHIPYARD_PROBE_HOST: host.docker.internal
@@ -101,13 +105,31 @@ services:
       backend:
         condition: service_healthy
 
-  # Public entry for the ShipYard UI itself: https://<random>.trycloudflare.com
-  # -> http://frontend:3000 (API calls ride same-origin via Next rewrites).
-  # Grab the link with: docker compose -f docker-compose.dev.yml logs tunnel
+  # Stable public entry for the ShipYard UI itself:
+  # https://shipyard-platform.<tailnet>.ts.net -> http://frontend:3000.
   tunnel:
-    image: cloudflare/cloudflared:latest
+    image: tailscale/tailscale:stable
     mem_limit: 1g
-    command: tunnel --url http://frontend:3000 --no-autoupdate
+    restart: unless-stopped
+    environment:
+      TS_AUTHKEY: ${TAILSCALE_AUTHKEY:-}
+      TS_HOSTNAME: shipyard-platform
+    command:
+      - sh
+      - -c
+      - >-
+        tailscaled --state=/var/lib/tailscale/tailscaled.state
+        --socket=/var/run/tailscale/tailscaled.sock &
+        until test -S /var/run/tailscale/tailscaled.sock; do sleep 1; done;
+        tailscale up --authkey="$$TS_AUTHKEY" --hostname="$$TS_HOSTNAME" --accept-dns=false;
+        tailscale funnel --bg --https=443 http://frontend:3000;
+        tail -f /dev/null
+    volumes:
+      - tailscale-platform-state:/var/lib/tailscale
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
     depends_on:
       frontend:
         condition: service_started
@@ -127,3 +149,4 @@ services:
 
 volumes:
   redis-data:
+  tailscale-platform-state:

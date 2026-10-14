@@ -11,6 +11,10 @@
 | `FRONTEND_URL`, `PUBLIC_BASE_URL` | CORS origin, webhook URL | Must match the deployed frontend/API origins. |
 | `GITHUB_CLIENT_ID/SECRET/CALLBACK_URL` | OAuth login + repo listing | GitHub App OAuth credentials. |
 | `SHIPYARD_BASE_DOMAIN` | `slug.<domain>` live URLs | Wildcard DNS → Traefik. |
+| `PUBLIC_TUNNEL_PROVIDER` | Public deployment tunnel backend | `cloudflare` by default; set to `tailscale` for stable per-project Funnel URLs. |
+| `PUBLIC_TUNNELS_ENABLED` | Enable deployment public URLs | Set `false` to disable tunnel sidecars. |
+| `TAILSCALE_AUTHKEY` | Tailscale sidecar enrollment | Required when `PUBLIC_TUNNEL_PROVIDER=tailscale`; keep secret. |
+| `TAILSCALE_TAILNET` | Tailscale Funnel DNS suffix | Example: `example.ts.net`; URLs become `https://shipyard-<project-slug>.<tailnet>`. |
 | `SHIPYARD_WORKDIR` | Worker build temp root | Disk with headroom; cleaned per-deployment (operator purges stale `d*` dirs). |
 
 ## Health signals

@@ -142,6 +142,7 @@ async function runDeployment(deploymentId, deps = {}) {
     const dockerfile = deps.dockerfile || require('../deployment/dockerfile');
     let dockerfileUsed = 'custom';
     const isStatic = project.deploy_type === 'static';
+    const useDockerfile = project.use_dockerfile !== 0 && project.use_dockerfile !== false;
     try {
       const ensured = dockerfile.ensure(dir, {
         buildCommand: deployment.build_command || project.build_command,
@@ -150,10 +151,12 @@ async function runDeployment(deploymentId, deps = {}) {
         deployType: project.deploy_type || 'server',
         outputDir: project.output_dir || 'build',
         envVars: envRows,
+        useDockerfile,
       });
       dockerfileUsed = ensured.used;
       if (ensured.used !== 'custom') {
-        await deploymentRepo.appendLog(deploymentId, 'image', 'stdout', `no Dockerfile in repo — generated ${isStatic ? 'static nginx' : `one for ${ensured.stack} stack`} from build config`);
+        const reason = useDockerfile ? 'no Dockerfile in repo' : 'repository Dockerfile disabled';
+        await deploymentRepo.appendLog(deploymentId, 'image', 'stdout', `${reason} — generated ${isStatic ? 'static nginx' : `one for ${ensured.stack} stack`} from build config`);
       }
     } catch (e) {
       if (e.message === 'no_dockerfile_no_detected_stack' || e.message === 'static_requires_node_project') {
@@ -337,6 +340,7 @@ async function runDeployment(deploymentId, deps = {}) {
     // localhost or a host-mapped port.
     await tunnelService.ensureDeploymentTunnel({
       projectId: project.id,
+      projectSlug: project.slug || project.name,
       deploymentId,
       containerId: newContainerId,
       appPort,

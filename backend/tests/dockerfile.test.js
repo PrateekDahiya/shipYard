@@ -9,6 +9,7 @@ const sm = require('../src/deployment/stateMachine');
 function mkDir(files) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shipyard-df-'));
   for (const [name, content] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
     fs.writeFileSync(path.join(dir, name), content);
   }
   return dir;
@@ -20,6 +21,15 @@ describe('Dockerfile buildpack-lite', () => {
     const r = dockerfile.ensure(dir, { buildCommand: 'npm run build', runCommand: 'npm start', port: 3000 });
     expect(r).toEqual({ used: 'custom', stack: 'custom' });
     expect(fs.readFileSync(path.join(dir, 'Dockerfile'), 'utf8')).toBe('FROM custom:1\n');
+  });
+
+  test('repository Dockerfile can be ignored for a generated frontend image', () => {
+    const dir = mkDir({ Dockerfile: 'FROM backend-only:1\n', 'package.json': '{}' });
+    const r = dockerfile.ensure(dir, { useDockerfile: false, deployType: 'static', outputDir: 'dist' });
+    expect(r.used).toBe('generated-static');
+    const content = fs.readFileSync(path.join(dir, 'Dockerfile'), 'utf8');
+    expect(content).toContain('FROM nginx:alpine');
+    expect(content).not.toContain('backend-only:1');
   });
 
   test('node project gets generated Dockerfile with build + run commands', () => {
@@ -63,6 +73,31 @@ describe('Dockerfile buildpack-lite', () => {
     expect(content).not.toContain('RUN npm run');
     expect(content).toContain('RUN npm install');
     expect(content).toContain('FROM nginx:alpine');
+  });
+
+  test('static monorepo detects package.json beside nested output directory', () => {
+    const dir = mkDir({
+      'frontend/package.json': '{}',
+    });
+    const r = dockerfile.ensure(dir, {
+      useDockerfile: false,
+      deployType: 'static',
+      buildCommand: 'cd frontend && npm run build',
+      outputDir: 'frontend/dist',
+    });
+    expect(r.used).toBe('generated-static');
+    const content = fs.readFileSync(path.join(dir, 'Dockerfile'), 'utf8');
+    expect(content).toContain('COPY frontend/package*.json frontend/');
+    expect(content).toContain('RUN cd frontend && npm install');
+    expect(content).toContain('RUN cd frontend && npm run build');
+    expect(content).toContain('COPY --from=build /app/frontend/dist /usr/share/nginx/html');
+  });
+
+  test('static monorepo scopes a root build command to its frontend directory', () => {
+    const dir = mkDir({ 'frontend/package.json': '{}' });
+    dockerfile.ensure(dir, { useDockerfile: false, deployType: 'static', buildCommand: 'npm run build', outputDir: 'frontend/dist' });
+    const content = fs.readFileSync(path.join(dir, 'Dockerfile'), 'utf8');
+    expect(content).toContain('RUN cd frontend && npm run build');
   });
 
   test('pure static page (no package.json) gets single-stage nginx', () => {

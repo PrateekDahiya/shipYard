@@ -19,7 +19,7 @@ export default function Metrics({ params }: { params: { id: string } }) {
     api.requestSeries(params.id, 24).then((r) => setSeries(r.points)).catch(() => {});
     api.runtime(params.id).then((r) => setRuntime(r.runtime)).catch(() => setRuntime({ running: false }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [params.id]);
 
   if (error) return <div><ErrorBanner message={error} /></div>;
   if (!data) return <div><Card><p className="text-sm text-gray-500 dark:text-gray-400">Loading metrics…</p></Card></div>;

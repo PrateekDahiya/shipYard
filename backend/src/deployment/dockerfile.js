@@ -7,9 +7,9 @@
 const fs = require('fs');
 const path = require('path');
 
-function detectStack(contextDir) {
+function detectStack(contextDir, { useDockerfile = true } = {}) {
   const has = (f) => fs.existsSync(path.join(contextDir, f));
-  if (has('Dockerfile')) {
+  if (useDockerfile && has('Dockerfile')) {
     return 'custom';
   }
   if (has('package.json')) {
@@ -19,6 +19,24 @@ function detectStack(contextDir) {
     return 'python';
   }
   return 'unknown';
+}
+
+function staticSourceDir(contextDir, outputDir) {
+  const parts = String(outputDir || 'build').replace(/\\/g, '/').split('/');
+  for (let i = parts.length - 1; i > 0; i -= 1) {
+    const candidate = parts.slice(0, i).join('/');
+    if (fs.existsSync(path.join(contextDir, candidate, 'package.json'))) {
+      return candidate;
+    }
+  }
+  return '.';
+}
+
+function scopedBuildCommand(buildCommand, sourceDir) {
+  if (!buildCommand || sourceDir === '.' || /^\s*(cd|pushd)\s+/i.test(buildCommand)) {
+    return buildCommand;
+  }
+  return `cd ${sourceDir} && ${buildCommand}`;
 }
 
 function shellCmd(cmd) {
@@ -73,14 +91,16 @@ function generate({ stack, buildCommand, runCommand, port }) {
 // Returns { used: 'custom' } or writes a generated Dockerfile and returns
 // { used: 'generated', stack }. Throws no_dockerfile_no_detected_stack when
 // neither a Dockerfile nor a known stack exists.
-function ensure(contextDir, { buildCommand, runCommand, port, deployType, outputDir, envVars = [] }) {
-  const stack = detectStack(contextDir);
-  if (stack === 'custom') {
+function ensure(contextDir, { buildCommand, runCommand, port, deployType, outputDir, envVars = [], useDockerfile = true }) {
+  const stack = detectStack(contextDir, { useDockerfile });
+  if (useDockerfile && stack === 'custom') {
     return { used: 'custom', stack };
   }
   if (deployType === 'static') {
-    const hasPackageJson = fs.existsSync(path.join(contextDir, 'package.json'));
-    const staticContent = generateStatic({ hasPackageJson, buildCommand, outputDir: outputDir || 'build' });
+    const staticOutputDir = outputDir || 'build';
+    const sourceDir = staticSourceDir(contextDir, staticOutputDir);
+    const hasPackageJson = fs.existsSync(path.join(contextDir, sourceDir, 'package.json'));
+    const staticContent = generateStatic({ hasPackageJson, buildCommand, outputDir: staticOutputDir, sourceDir });
     // Build args for static site: inject ALL build-time env vars (scope 'build' or 'both')
     const buildArgs = {};
     for (const r of envVars) {
@@ -106,7 +126,7 @@ function ensure(contextDir, { buildCommand, runCommand, port, deployType, output
   return { used: 'generated', stack };
 }
 
-function generateStatic({ hasPackageJson, buildCommand, outputDir }) {
+function generateStatic({ hasPackageJson, buildCommand, outputDir, sourceDir = '.' }) {
   const out = outputDir || 'build';
   if (!hasPackageJson) {
     // Pure static page (plain HTML/CSS/JS): no build stage, serve the files.
@@ -124,14 +144,15 @@ function generateStatic({ hasPackageJson, buildCommand, outputDir }) {
   const lines = [
     'FROM node:20-alpine AS build',
     'WORKDIR /app',
-    'COPY package*.json ./',
-    'RUN npm install',
+    `COPY ${sourceDir === '.' ? 'package*.json ./' : `${sourceDir}/package*.json ${sourceDir}/`}`,
+    `RUN ${sourceDir === '.' ? 'npm install' : `cd ${sourceDir} && npm install`}`,
     'COPY . .',
   ];
   // Empty build command = nothing to compile; never default to `npm run build`
   // (repos without that script would fail).
-  if (buildCommand) {
-    lines.push(`RUN ${buildCommand}`);
+  const scopedCommand = scopedBuildCommand(buildCommand, sourceDir);
+  if (scopedCommand) {
+    lines.push(`RUN ${scopedCommand}`);
   }
   return (
     lines.concat([
@@ -156,4 +177,4 @@ function getStaticBuildArgs(buildArgs = {}) {
   return lines;
 }
 
-module.exports = { detectStack, generate, generateStatic, ensure };
+module.exports = { detectStack, generate, generateStatic, staticSourceDir, scopedBuildCommand, ensure };

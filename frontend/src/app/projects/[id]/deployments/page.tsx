@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { api, type Deployment } from "@/lib/api";
 import { Card, PageHeader, Empty, ErrorBanner, StatusBadge, btnPrimary, inputCls } from "@/components/ui";
 import { ProjectLayout } from "@/components/project-nav";
+import { usePolling } from "@/lib/use-polling";
 
 type Filter = "all" | "success" | "failed" | "active";
 
@@ -37,12 +38,7 @@ export default function Deployments({ params }: { params: { id: string } }) {
     }
   }
 
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 5000);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  usePolling(load, 5000, deployments.some((d) => isActive(d.status)) || deployments.length === 0, params.id);
 
   async function deploy(e: React.FormEvent) {
     e.preventDefault();

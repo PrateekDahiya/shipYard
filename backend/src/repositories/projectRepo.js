@@ -20,6 +20,7 @@ const ALLOWED_FIELDS = [
   'auto_deploy',
   'deploy_type',
   'output_dir',
+  'use_dockerfile',
 ];
 
 function filterUpdate(body) {
@@ -54,8 +55,8 @@ async function createWithOwner(conn, { ownerId, data }) {
   const [result] = await conn.query(
      `INSERT INTO projects
      (owner_id, name, slug, repository_url, branch, build_command, run_command, working_directory,
-      app_port, healthcheck_path, healthcheck_timeout, deploy_timeout, cpu_limit, memory_limit, restart_policy, auto_deploy, deploy_type, output_dir)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       app_port, healthcheck_path, healthcheck_timeout, deploy_timeout, cpu_limit, memory_limit, restart_policy, auto_deploy, deploy_type, output_dir, use_dockerfile)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       ownerId,
       data.name,
@@ -75,6 +76,7 @@ async function createWithOwner(conn, { ownerId, data }) {
       data.auto_deploy ? 1 : 0,
       data.deploy_type || 'server',
       data.output_dir || 'build',
+      data.use_dockerfile === undefined ? 1 : (data.use_dockerfile ? 1 : 0),
     ]
   );
   await conn.query(

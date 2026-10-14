@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui";
 import LogViewer, { type LogEntry } from "@/components/log-viewer";
+import { usePolling } from "@/lib/use-polling";
 
 // Live stdout/stderr of the project's currently running container,
 // polled every 5s. Complements DeploymentLogs (persisted pipeline output).
@@ -12,12 +13,9 @@ export default function ContainerLogs({ projectId }: { projectId: string }) {
   const [meta, setMeta] = useState<{ deploymentId?: number; container?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchLogs() {
+  usePolling(async () => {
       try {
         const r = await api.containerLogs(projectId);
-        if (cancelled) return;
         if (r.running) {
           setLines(r.lines || []);
           setMeta({ deploymentId: r.deploymentId, container: r.container });
@@ -28,16 +26,9 @@ export default function ContainerLogs({ projectId }: { projectId: string }) {
           setError(null);
         }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "container_logs_failed");
+        setError(e instanceof Error ? e.message : "container_logs_failed");
       }
-    }
-    fetchLogs();
-    const t = setInterval(fetchLogs, 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, [projectId]);
+    }, 5000, true, projectId);
 
   const entries: LogEntry[] = useMemo(() => {
     if (!lines) return [];

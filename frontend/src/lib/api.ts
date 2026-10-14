@@ -37,6 +37,7 @@ export interface Project {
   auto_deploy: number;
   deploy_type?: string;
   output_dir?: string;
+  use_dockerfile?: number;
 }
 
 export interface EnvVar {

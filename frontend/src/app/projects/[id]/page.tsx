@@ -21,6 +21,10 @@ function initialTab(): TabKey {
   }
 }
 
+function isDeploymentActive(status: string) {
+  return ["QUEUED", "CLONING", "BUILDING", "IMAGE_CREATED", "STARTING", "HEALTH_CHECKING", "RUNNING"].includes(status);
+}
+
 function SectionHeader({ title, desc, action }: { title: string; desc?: string; action?: React.ReactNode }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -50,6 +54,7 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
   const [healthPath, setHealthPath] = useState("/health");
   const [deployType, setDeployType] = useState("server");
   const [outputDir, setOutputDir] = useState("build");
+  const [useDockerfile, setUseDockerfile] = useState(true);
   const [rpm, setRpm] = useState(100);
   const [rph, setRph] = useState(1000);
   const [cpu, setCpu] = useState("");
@@ -87,6 +92,7 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
       setHealthPath(p.project.healthcheck_path || "/health");
       setDeployType(p.project.deploy_type || "server");
       setOutputDir(p.project.output_dir || "build");
+      setUseDockerfile(p.project.use_dockerfile !== 0);
       setRestartPolicy(p.project.restart_policy || "");
       setEnv((await api.listEnv(params.id)).variables);
       setAudit((await api.audit(params.id)).audit);
@@ -121,10 +127,8 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
 
   useEffect(() => {
     load();
-    const interval = setInterval(load, 5000);
-    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [params.id]);
 
   function selectTab(next: TabKey) {
     setTab(next);
@@ -251,6 +255,7 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
         healthcheck_path: healthPath || "/health",
         deploy_type: deployType,
         output_dir: outputDir || "build",
+        use_dockerfile: useDockerfile ? 1 : 0,
         cpu_limit: cpu || null,
         memory_limit: memory || null,
         restart_policy: restartPolicy || null,
@@ -450,6 +455,13 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
                     <input className={`${inputCls} mt-1 block w-40 font-mono`} value={outputDir} onChange={(e) => setOutputDir(e.target.value)} placeholder="build" />
                   </label>
                 )}
+                <label className="mt-2 flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={useDockerfile} onChange={(e) => setUseDockerfile(e.target.checked)} />
+                  Use repository Dockerfile
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Disable this for a static frontend when the repository Dockerfile belongs to another service.
+                </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <label className="text-sm">App port
@@ -589,11 +601,12 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
           />
           {allDeployments.length === 0 && <Empty text="No deployments yet — deploy first, then read the logs here." />}
         </Card>
-        {(logDepId ?? (allDeployments[0] ? String(allDeployments[0].id) : null)) && (
+         {(logDepId ?? (allDeployments[0] ? String(allDeployments[0].id) : null)) && (
           <DeploymentLogs
             key={logDepId ?? String(allDeployments[0].id)}
             projectId={params.id}
             deploymentId={logDepId ?? String(allDeployments[0].id)}
+            poll={isDeploymentActive((allDeployments.find((d) => String(d.id) === (logDepId ?? String(allDeployments[0].id))) || allDeployments[0]).status)}
           />
         )}
       </>
@@ -675,7 +688,7 @@ function Members({ projectId, onError }: { projectId: string; onError: (m: strin
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [projectId]);
 
   return (
     <div>

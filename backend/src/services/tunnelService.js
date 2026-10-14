@@ -1,7 +1,9 @@
 'use strict';
 
-// Public tunnels (Cloudflare Quick Tunnels): one agent sidecar per live
-// deployment, forwarding to the app container's Docker-network address.
+// Public tunnels: one agent sidecar per live deployment, forwarding to the
+// app container's Docker-network address. Tailscale mode reuses one named
+// state volume per project, which keeps its Funnel hostname stable across
+// deployments.
 //
 // Design constraints (all load-bearing):
 // - The upstream MUST be the app container's Docker-network IP + container
@@ -9,15 +11,20 @@
 //   localhost is the sidecar itself and host-mapped ports live in the host
 //   namespace — both would be wrong. Laptop dev servers (`npm run dev`) have
 //   no instance row and no container, so they can never get a tunnel.
-// - Quick-tunnel URLs rotate on every sidecar start; the UI therefore shows
-//   public_url only for the current live deployment (same rule as live_url).
 // - Everything here is best-effort and never throws: a tunnel that fails to
 //   come up must never fail the deployment itself.
 
 const TUNNEL_URL_RE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i;
 
 function tunnelsEnabled() {
-  return String(process.env.CLOUDFLARE_ENABLED || 'true').toLowerCase() !== 'false';
+  const configured = process.env.PUBLIC_TUNNELS_ENABLED
+    || (provider() === 'cloudflare' ? process.env.CLOUDFLARE_ENABLED : undefined)
+    || 'true';
+  return String(configured).toLowerCase() !== 'false';
+}
+
+function provider() {
+  return String(process.env.PUBLIC_TUNNEL_PROVIDER || 'cloudflare').toLowerCase();
 }
 
 function tunnelImage() {
@@ -26,6 +33,20 @@ function tunnelImage() {
 
 function platformTunnelContainer() {
   return process.env.TUNNEL_CONTAINER_NAME || 'shipyard-tunnel-1';
+}
+
+function tailscaleSlug(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50);
+}
+
+function tailscaleUrl(projectSlug) {
+  const tailnet = String(process.env.TAILSCALE_TAILNET || '').trim();
+  const host = `shipyard-${tailscaleSlug(projectSlug)}`;
+  return tailnet && tailscaleSlug(projectSlug) ? `https://${host}.${tailnet}` : null;
 }
 
 function sleep(ms) {
@@ -38,7 +59,7 @@ function logger() {
 
 // Start a sidecar for a live deployment and persist its public URL.
 // Returns the URL string, or null when tunnels are disabled/unavailable.
-async function ensureDeploymentTunnel({ projectId, deploymentId, containerId, appPort, docker }) {
+async function ensureDeploymentTunnel({ projectId, projectSlug, deploymentId, containerId, appPort, docker }) {
   if (!tunnelsEnabled()) {
     return null;
   }
@@ -46,9 +67,14 @@ async function ensureDeploymentTunnel({ projectId, deploymentId, containerId, ap
   try {
     const deploymentRepo = require('../repositories/deploymentRepo');
     const { parseMemory } = require('../utils/resources');
+    const isTailscale = provider() === 'tailscale';
+    if (isTailscale && (!process.env.TAILSCALE_AUTHKEY || !process.env.TAILSCALE_TAILNET)) {
+      log.warn('tailscale_config_missing', { projectId, deploymentId });
+      return null;
+    }
     const name = docker.tunnelName(projectId, deploymentId);
     try {
-      await docker.pullImage(tunnelImage());
+      await docker.pullImage(isTailscale ? (process.env.TAILSCALE_TUNNEL_IMAGE || 'tailscale/tailscale:stable') : tunnelImage());
     } catch (e) {
       log.warn('tunnel_image_pull_failed', { projectId, deploymentId, message: e && e.message });
       return null;
@@ -61,10 +87,23 @@ async function ensureDeploymentTunnel({ projectId, deploymentId, containerId, ap
     } catch {
       /* best effort */
     }
+    const image = isTailscale ? (process.env.TAILSCALE_TUNNEL_IMAGE || 'tailscale/tailscale:stable') : tunnelImage();
+    const stableUrl = isTailscale ? tailscaleUrl(projectSlug) : null;
+    const tsHost = `shipyard-${tailscaleSlug(projectSlug)}`;
+    const tsCommand = [
+      'sh', '-c',
+      'tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock & ' +
+      'until test -S /var/run/tailscale/tailscaled.sock; do sleep 1; done; ' +
+      'tailscale up --authkey="$TS_AUTHKEY" --hostname="$TS_HOSTNAME" --accept-dns=false; ' +
+      `tailscale funnel --bg --https=443 http://${ip}:${appPort}; tail -f /dev/null`,
+    ];
     const sidecar = await docker.startContainer({
       name,
-      image: tunnelImage(),
-      env: {},
+      image,
+      env: isTailscale ? {
+        TS_AUTHKEY: process.env.TAILSCALE_AUTHKEY,
+        TS_HOSTNAME: tsHost,
+      } : {},
       labels: {
         'shipyard.managed': 'true',
         'shipyard.project': String(projectId),
@@ -72,9 +111,17 @@ async function ensureDeploymentTunnel({ projectId, deploymentId, containerId, ap
         'shipyard.tunnel-for': `${projectId}/${deploymentId}`,
       },
       memoryBytes: parseMemory('64M'),
-      cmd: ['tunnel', '--url', upstream, '--no-autoupdate'],
+      cmd: isTailscale ? tsCommand : ['tunnel', '--url', upstream, '--no-autoupdate'],
+      binds: isTailscale ? [`shipyard-tailscale-project-${projectId}:/var/lib/tailscale`] : undefined,
+      capAdd: isTailscale ? ['NET_ADMIN'] : undefined,
+      devices: isTailscale ? [{ PathOnHost: '/dev/net/tun', PathInContainer: '/dev/net/tun', CgroupPermissions: 'rwm' }] : undefined,
     });
     const sidecarId = String(sidecar.id || sidecar.Id);
+    if (stableUrl) {
+      await deploymentRepo.setPublicUrl(deploymentId, stableUrl);
+      log.info('tunnel_ready', { projectId, deploymentId, url: stableUrl, provider: 'tailscale' });
+      return stableUrl;
+    }
     // The agent prints its assigned URL to its own logs a few seconds in.
     // Poll briefly; on timeout remove the sidecar (an unlinkable tunnel only
     // wastes a tunnel slot) and leave the deployment itself live.
@@ -162,6 +209,11 @@ async function getPlatformTunnelUrl(docker, cacheMs = 30000) {
     return platformCache.url;
   }
   let url = null;
+  if (provider() === 'tailscale' && process.env.TAILSCALE_TAILNET) {
+    url = `https://shipyard-platform.${String(process.env.TAILSCALE_TAILNET).trim()}`;
+    platformCache = { url, at: Date.now() };
+    return url;
+  }
   try {
     const logs = await docker.containerLogsText(platformTunnelContainer(), { tail: 30 });
     const m = `${String(logs.stdout || '')}\n${String(logs.stderr || '')}`.match(TUNNEL_URL_RE);

@@ -131,7 +131,7 @@ function restartPolicyOf(value) {
   return { Name: 'unless-stopped' };
 }
 
-async function startContainer({ name, image, env = {}, labels = {}, port, memoryBytes, nanoCpus, cmd, restartPolicy }) {
+async function startContainer({ name, image, env = {}, labels = {}, port, memoryBytes, nanoCpus, cmd, restartPolicy, binds, capAdd, devices }) {
   const Env = Object.entries(env).map(([k, v]) => `${k}=${v}`);
   const HostConfig = {
     Memory: memoryBytes || undefined,
@@ -139,6 +139,9 @@ async function startContainer({ name, image, env = {}, labels = {}, port, memory
     AutoRemove: false,
     RestartPolicy: restartPolicyOf(restartPolicy),
     NetworkMode: process.env.SHIPYARD_NETWORK || undefined,
+    Binds: binds || undefined,
+    CapAdd: capAdd || undefined,
+    Devices: devices || undefined,
   };
   // Publish the app port on an ephemeral host port so the worker can health-
   // check it. Traefik still routes to the container port on the docker network.
@@ -222,8 +225,8 @@ async function stopAndRemove(containerId, { timeoutSeconds = 10 } = {}) {
 }
 
 async function containerLogs(containerId, { tail = 200 } = {}) {
-  const { stdout, stderr } = await containerLogsText(containerId, { tail });
-  return stdout + stderr;
+  const text = await containerLogsText(containerId, { tail });
+  return (text.ordered || []).map((entry) => entry.text).join('') || text.stdout + text.stderr;
 }
 
 // Parse a Docker multiplexed log payload: each frame is an 8-byte header
@@ -235,15 +238,18 @@ async function containerLogs(containerId, { tail = 200 } = {}) {
 function demuxBuffer(buf) {
   const out = [];
   const err = [];
+  const ordered = [];
   if (!buf || buf.length === 0) {
-    return { stdout: '', stderr: '' };
+    return { stdout: '', stderr: '', ordered };
   }
   if (buf.length < 8) {
-    return { stdout: buf.toString('utf8'), stderr: '' };
+    const text = buf.toString('utf8');
+    return { stdout: text, stderr: '', ordered: [{ stream: 'stdout', text }] };
   }
   const first = buf.readUInt8(0);
   if (first !== 0 && first !== 1 && first !== 2) {
-    return { stdout: buf.toString('utf8'), stderr: '' };
+    const text = buf.toString('utf8');
+    return { stdout: text, stderr: '', ordered: [{ stream: 'stdout', text }] };
   }
   let offset = 0;
   while (offset + 8 <= buf.length) {
@@ -257,15 +263,17 @@ function demuxBuffer(buf) {
     const chunk = buf.subarray(start, end).toString('utf8');
     if (type === 2) {
       err.push(chunk);
+      ordered.push({ stream: 'stderr', text: chunk });
     } else {
       out.push(chunk);
+      ordered.push({ stream: 'stdout', text: chunk });
     }
     offset = end;
     if (end >= buf.length) {
       break;
     }
   }
-  return { stdout: out.join(''), stderr: err.join('') };
+  return { stdout: out.join(''), stderr: err.join(''), ordered };
 }
 
 function withTimeout(promise, ms, message) {

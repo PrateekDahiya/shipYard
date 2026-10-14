@@ -4,34 +4,27 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type DeployLog } from "@/lib/api";
 import { Card } from "@/components/ui";
 import LogViewer from "@/components/log-viewer";
+import { usePolling } from "@/lib/use-polling";
 
 // Persisted build-log viewer for one deployment, polled every 5s so new
 // output appears while a build runs.
-export default function DeploymentLogs({ projectId, deploymentId }: { projectId: string; deploymentId: string }) {
+export default function DeploymentLogs({ projectId, deploymentId, poll = true }: { projectId: string; deploymentId: string; poll?: boolean }) {
   const [logs, setLogs] = useState<DeployLog[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchLogs() {
+  usePolling(async () => {
       try {
         const r = await api.deploymentLogs(projectId, deploymentId);
-        if (!cancelled) {
-          setLogs(r.logs);
-          setError(null);
-        }
+        setLogs(r.logs);
+        setError(null);
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "logs_failed");
+        setError(e instanceof Error ? e.message : "logs_failed");
       }
-    }
+    }, 5000, poll, `${projectId}:${deploymentId}`);
+
+  useEffect(() => {
     setLogs([]);
     setError(null);
-    fetchLogs();
-    const t = setInterval(fetchLogs, 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
   }, [projectId, deploymentId]);
 
   const entries = useMemo(

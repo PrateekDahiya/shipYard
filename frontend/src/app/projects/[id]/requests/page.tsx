@@ -45,7 +45,7 @@ export default function Requests({ params }: { params: { id: string } }) {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [params.id]);
 
   return (
     <ProjectLayout id={params.id} active="requests">

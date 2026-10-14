@@ -5,6 +5,7 @@ import { api, apiBase, type Deployment, type DeployEvent } from "@/lib/api";
 import { Card, PageHeader, ErrorBanner, StatusBadge, btnPrimary, btnSecondary } from "@/components/ui";
 import { ProjectLayout } from "@/components/project-nav";
 import DeploymentLogs from "@/components/deployment-logs";
+import { usePolling } from "@/lib/use-polling";
 
 function isFailed(status: string) {
   return status.includes("FAIL");
@@ -54,12 +55,7 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
     }
   }
 
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 5000);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  usePolling(load, 5000, !deployment || isActive(deployment.status), `${params.id}:${params.depId}`);
 
   useEffect(() => {
     const token = typeof window !== "undefined" ? window.localStorage.getItem("shipyard_token") : null;
@@ -75,7 +71,7 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
     src.addEventListener("DEPLOYMENT_STATUS", onStatus as EventListener);
     return () => src.close();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [params.id, params.depId]);
 
   async function rollback() {
     if (!deployment) return;
@@ -237,7 +233,7 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
         )}
       </Card>
 
-      <DeploymentLogs projectId={params.id} deploymentId={params.depId} />
+          <DeploymentLogs projectId={params.id} deploymentId={params.depId} poll={isActive(deployment.status)} />
     </div>
     </ProjectLayout>
   );

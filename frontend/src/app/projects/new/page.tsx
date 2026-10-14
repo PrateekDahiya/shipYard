@@ -12,6 +12,7 @@ export default function NewProject() {
   const [branch, setBranch] = useState("main");
   const [deployType, setDeployType] = useState("server");
   const [outputDir, setOutputDir] = useState("build");
+  const [useDockerfile, setUseDockerfile] = useState(true);
   const [buildCommand, setBuildCommand] = useState("");
   const [runCommand, setRunCommand] = useState("");
   const [appPort, setAppPort] = useState("3000");
@@ -35,6 +36,7 @@ export default function NewProject() {
         branch: branch.trim() || "main",
         deploy_type: deployType,
         output_dir: deployType === "static" ? outputDir.trim() || "build" : undefined,
+        use_dockerfile: useDockerfile ? 1 : 0,
         build_command: buildCommand.trim() || undefined,
         run_command: runCommand.trim() || undefined,
         app_port: parseInt(appPort, 10) || 3000,
@@ -138,6 +140,13 @@ export default function NewProject() {
                   />
                 </label>
               )}
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={useDockerfile} onChange={(e) => setUseDockerfile(e.target.checked)} />
+                Use repository Dockerfile
+              </label>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Disable this when the Dockerfile is for a different service.
+              </p>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-gray-700 dark:text-gray-300">
                   Build command (optional)
