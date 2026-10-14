@@ -152,6 +152,7 @@ async function runDeployment(deploymentId, deps = {}) {
         outputDir: project.output_dir || 'build',
         envVars: envRows,
         useDockerfile,
+        workingDirectory: project.working_directory || '.',
       });
       dockerfileUsed = ensured.used;
       if (ensured.used !== 'custom') {

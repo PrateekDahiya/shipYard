@@ -15,6 +15,7 @@ export default function NewProject() {
   const [useDockerfile, setUseDockerfile] = useState(true);
   const [buildCommand, setBuildCommand] = useState("");
   const [runCommand, setRunCommand] = useState("");
+  const [workingDirectory, setWorkingDirectory] = useState("");
   const [appPort, setAppPort] = useState("3000");
   const [restartPolicy, setRestartPolicy] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +40,7 @@ export default function NewProject() {
         use_dockerfile: useDockerfile ? 1 : 0,
         build_command: buildCommand.trim() || undefined,
         run_command: runCommand.trim() || undefined,
+        working_directory: workingDirectory.trim() || "/",
         app_port: parseInt(appPort, 10) || 3000,
         restart_policy: restartPolicy || undefined,
       } as Parameters<typeof api.createProject>[0]);
@@ -179,6 +181,16 @@ export default function NewProject() {
                   onChange={(e) => setAppPort(e.target.value)}
                   placeholder="3000"
                 />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-gray-700 dark:text-gray-300">Working directory</span>
+                <input
+                  className={`${inputCls} w-full font-mono`}
+                  value={workingDirectory}
+                  onChange={(e) => setWorkingDirectory(e.target.value)}
+                  placeholder="/ or frontend"
+                />
+                <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">Repository-relative directory containing this service.</span>
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-gray-700 dark:text-gray-300">

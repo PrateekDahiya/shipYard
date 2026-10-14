@@ -50,6 +50,7 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
   const [repoUrl, setRepoUrl] = useState("");
   const [buildCmd, setBuildCmd] = useState("");
   const [runCmd, setRunCmd] = useState("");
+  const [workingDirectory, setWorkingDirectory] = useState("");
   const [appPort, setAppPort] = useState("3000");
   const [healthPath, setHealthPath] = useState("/health");
   const [deployType, setDeployType] = useState("server");
@@ -88,6 +89,7 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
       setRepoUrl(p.project.repository_url || "");
       setBuildCmd(p.project.build_command || "");
       setRunCmd(p.project.run_command || "");
+      setWorkingDirectory(p.project.working_directory === "/" ? "" : (p.project.working_directory || ""));
       setAppPort(String(p.project.app_port ?? 3000));
       setHealthPath(p.project.healthcheck_path || "/health");
       setDeployType(p.project.deploy_type || "server");
@@ -255,6 +257,7 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
         healthcheck_path: healthPath || "/health",
         deploy_type: deployType,
         output_dir: outputDir || "build",
+        working_directory: workingDirectory.trim() || "/",
         use_dockerfile: useDockerfile ? 1 : 0,
         cpu_limit: cpu || null,
         memory_limit: memory || null,
@@ -439,6 +442,10 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
               </label>
               <label className="block">Run command
                 <input className={`${inputCls} mt-1 w-full font-mono`} value={runCmd} onChange={(e) => setRunCmd(e.target.value)} placeholder="npm start" />
+              </label>
+              <label className="block">Working directory
+                <input className={`${inputCls} mt-1 w-full font-mono`} value={workingDirectory} onChange={(e) => setWorkingDirectory(e.target.value)} placeholder="/ or frontend" />
+                <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">Repository-relative directory for this service.</span>
               </label>
             </div>
             <div className="space-y-3 text-sm">

@@ -7,9 +7,15 @@
 const fs = require('fs');
 const path = require('path');
 
-function detectStack(contextDir, { useDockerfile = true } = {}) {
-  const has = (f) => fs.existsSync(path.join(contextDir, f));
-  if (useDockerfile && has('Dockerfile')) {
+function cleanDirectory(value) {
+  const dir = String(value || '.').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  return dir || '.';
+}
+
+function detectStack(contextDir, { useDockerfile = true, workingDirectory = '.' } = {}) {
+  const root = path.join(contextDir, cleanDirectory(workingDirectory));
+  const has = (f) => fs.existsSync(path.join(root, f));
+  if (useDockerfile && fs.existsSync(path.join(contextDir, 'Dockerfile'))) {
     return 'custom';
   }
   if (has('package.json')) {
@@ -21,7 +27,11 @@ function detectStack(contextDir, { useDockerfile = true } = {}) {
   return 'unknown';
 }
 
-function staticSourceDir(contextDir, outputDir) {
+function staticSourceDir(contextDir, outputDir, workingDirectory = '.') {
+  const explicit = cleanDirectory(workingDirectory);
+  if (explicit !== '.' && fs.existsSync(path.join(contextDir, explicit))) {
+    return explicit;
+  }
   const parts = String(outputDir || 'build').replace(/\\/g, '/').split('/');
   for (let i = parts.length - 1; i > 0; i -= 1) {
     const candidate = parts.slice(0, i).join('/');
@@ -39,26 +49,32 @@ function scopedBuildCommand(buildCommand, sourceDir) {
   return `cd ${sourceDir} && ${buildCommand}`;
 }
 
+function scopedRunCommand(runCommand, sourceDir) {
+  return scopedBuildCommand(runCommand, sourceDir);
+}
+
 function shellCmd(cmd) {
   return `["sh", "-c", ${JSON.stringify(cmd)}]`;
 }
 
-function generate({ stack, buildCommand, runCommand, port }) {
+function generate({ stack, buildCommand, runCommand, port, sourceDir = '.' }) {
   const appPort = port || 3000;
   if (stack === 'node') {
     const lines = [
       'FROM node:20-alpine',
       'WORKDIR /app',
-      'COPY package*.json ./',
-      'RUN npm install',
+      `COPY ${sourceDir === '.' ? 'package*.json ./' : `${sourceDir}/package*.json ${sourceDir}/`}`,
+      `RUN ${sourceDir === '.' ? 'npm install' : `cd ${sourceDir} && npm install`}`,
       'COPY . .',
     ];
-    if (buildCommand) {
-      lines.push(`RUN ${buildCommand}`);
+    const scopedBuild = scopedBuildCommand(buildCommand, sourceDir);
+    if (scopedBuild) {
+      lines.push(`RUN ${scopedBuild}`);
     }
     lines.push(`EXPOSE ${appPort}`);
-    if (runCommand) {
-      lines.push(`CMD ${shellCmd(runCommand)}`);
+    const scopedRun = scopedRunCommand(runCommand, sourceDir);
+    if (scopedRun) {
+      lines.push(`CMD ${shellCmd(scopedRun)}`);
     } else {
       lines.push('CMD ["node", "server.js"]');
     }
@@ -68,16 +84,18 @@ function generate({ stack, buildCommand, runCommand, port }) {
     const lines = [
       'FROM python:3.12-slim',
       'WORKDIR /app',
-      'COPY requirements.txt ./',
-      'RUN pip install --no-cache-dir -r requirements.txt',
+      `COPY ${sourceDir === '.' ? 'requirements.txt ./' : `${sourceDir}/requirements.txt ${sourceDir}/`}`,
+      `RUN pip install --no-cache-dir -r ${sourceDir === '.' ? 'requirements.txt' : `${sourceDir}/requirements.txt`}`,
       'COPY . .',
     ];
-    if (buildCommand) {
-      lines.push(`RUN ${buildCommand}`);
+    const scopedBuild = scopedBuildCommand(buildCommand, sourceDir);
+    if (scopedBuild) {
+      lines.push(`RUN ${scopedBuild}`);
     }
     lines.push(`EXPOSE ${appPort}`);
-    if (runCommand) {
-      lines.push(`CMD ${shellCmd(runCommand)}`);
+    const scopedRun = scopedRunCommand(runCommand, sourceDir);
+    if (scopedRun) {
+      lines.push(`CMD ${shellCmd(scopedRun)}`);
     } else {
       lines.push('CMD ["python", "app.py"]');
     }
@@ -91,16 +109,20 @@ function generate({ stack, buildCommand, runCommand, port }) {
 // Returns { used: 'custom' } or writes a generated Dockerfile and returns
 // { used: 'generated', stack }. Throws no_dockerfile_no_detected_stack when
 // neither a Dockerfile nor a known stack exists.
-function ensure(contextDir, { buildCommand, runCommand, port, deployType, outputDir, envVars = [], useDockerfile = true }) {
-  const stack = detectStack(contextDir, { useDockerfile });
+function ensure(contextDir, { buildCommand, runCommand, port, deployType, outputDir, envVars = [], useDockerfile = true, workingDirectory = '.' }) {
+  const sourceDir = cleanDirectory(workingDirectory);
+  const stack = detectStack(contextDir, { useDockerfile, workingDirectory: sourceDir });
   if (useDockerfile && stack === 'custom') {
     return { used: 'custom', stack };
   }
   if (deployType === 'static') {
     const staticOutputDir = outputDir || 'build';
-    const sourceDir = staticSourceDir(contextDir, staticOutputDir);
-    const hasPackageJson = fs.existsSync(path.join(contextDir, sourceDir, 'package.json'));
-    const staticContent = generateStatic({ hasPackageJson, buildCommand, outputDir: staticOutputDir, sourceDir });
+    const staticDir = staticSourceDir(contextDir, staticOutputDir, sourceDir);
+    const hasPackageJson = fs.existsSync(path.join(contextDir, staticDir, 'package.json'));
+    const staticOutputPath = staticDir !== '.' && !staticOutputDir.startsWith(`${staticDir}/`)
+      ? `${staticDir}/${staticOutputDir}`
+      : staticOutputDir;
+    const staticContent = generateStatic({ hasPackageJson, buildCommand, outputDir: staticOutputPath, sourceDir: staticDir });
     // Build args for static site: inject ALL build-time env vars (scope 'build' or 'both')
     const buildArgs = {};
     for (const r of envVars) {
@@ -121,7 +143,7 @@ function ensure(contextDir, { buildCommand, runCommand, port, deployType, output
     err.status = 400;
     throw err;
   }
-  const content = generate({ stack, buildCommand, runCommand, port });
+  const content = generate({ stack, buildCommand, runCommand, port, sourceDir });
   fs.writeFileSync(path.join(contextDir, 'Dockerfile'), content);
   return { used: 'generated', stack };
 }
@@ -133,7 +155,7 @@ function generateStatic({ hasPackageJson, buildCommand, outputDir, sourceDir = '
     return (
       [
         'FROM nginx:alpine',
-        'COPY . /usr/share/nginx/html',
+        `COPY ${sourceDir === '.' ? '.' : sourceDir} /usr/share/nginx/html`,
         // SPA fallback so deep links don't 404 on refresh.
         'RUN printf \'server{listen 80;location /{root /usr/share/nginx/html;index index.html;try_files $uri $uri/ /index.html;}}\' > /etc/nginx/conf.d/default.conf',
         'EXPOSE 80',
@@ -177,4 +199,4 @@ function getStaticBuildArgs(buildArgs = {}) {
   return lines;
 }
 
-module.exports = { detectStack, generate, generateStatic, staticSourceDir, scopedBuildCommand, ensure };
+module.exports = { detectStack, generate, generateStatic, staticSourceDir, scopedBuildCommand, scopedRunCommand, ensure };

@@ -100,6 +100,20 @@ describe('Dockerfile buildpack-lite', () => {
     expect(content).toContain('RUN cd frontend && npm run build');
   });
 
+  test('explicit working directory controls nested static output', () => {
+    const dir = mkDir({ 'frontend/package.json': '{}' });
+    dockerfile.ensure(dir, {
+      useDockerfile: false,
+      deployType: 'static',
+      buildCommand: 'npm run build',
+      workingDirectory: 'frontend',
+      outputDir: 'dist',
+    });
+    const content = fs.readFileSync(path.join(dir, 'Dockerfile'), 'utf8');
+    expect(content).toContain('RUN cd frontend && npm run build');
+    expect(content).toContain('COPY --from=build /app/frontend/dist /usr/share/nginx/html');
+  });
+
   test('pure static page (no package.json) gets single-stage nginx', () => {
     const dir = mkDir({ 'index.html': '<h1>hi</h1>' });
     const r = dockerfile.ensure(dir, { deployType: 'static', outputDir: 'build' });
@@ -108,6 +122,18 @@ describe('Dockerfile buildpack-lite', () => {
     expect(content).toContain('FROM nginx:alpine');
     expect(content).not.toContain('AS build');
     expect(content).toContain('COPY . /usr/share/nginx/html');
+  });
+
+  test('explicit working directory serves plain static files', () => {
+    const dir = mkDir({ 'frontend/index.html': '<h1>frontend</h1>' });
+    dockerfile.ensure(dir, {
+      useDockerfile: false,
+      deployType: 'static',
+      workingDirectory: 'frontend',
+    });
+    const content = fs.readFileSync(path.join(dir, 'Dockerfile'), 'utf8');
+    expect(content).toContain('COPY frontend /usr/share/nginx/html');
+    expect(content).not.toContain('AS build');
   });
 
   test('state machine allows BUILDING → IMAGE_BUILD_FAILED (unresolvable image config)', () => {

@@ -38,6 +38,16 @@ function validateLimits(data) {
       throw err;
     }
   }
+  if (data.working_directory !== undefined) {
+    const dir = String(data.working_directory || '/');
+    const relative = dir === '/' ? '' : dir.replace(/^\/+|\/+$/g, '');
+    const segs = relative ? relative.split('/') : [];
+    if (relative.length > 255 || segs.some((s) => !/^[A-Za-z0-9_.-]+$/.test(s) || s === '.' || s === '..')) {
+      const err = new Error('invalid_working_directory');
+      err.status = 400;
+      throw err;
+    }
+  }
 }
 
 function hostnameTakenError() {
