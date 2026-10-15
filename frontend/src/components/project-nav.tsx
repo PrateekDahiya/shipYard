@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 
-export type ProjectSection = "overview" | "deployments" | "metrics" | "requests" | "domains" | "shell";
+type ProjectSection = "overview" | "deployments" | "metrics" | "requests" | "domains" | "shell";
 
 const SECTIONS: { key: ProjectSection; label: string; href: (id: string) => string }[] = [
   { key: "overview", label: "Overview", href: (id) => `/projects/${id}` },

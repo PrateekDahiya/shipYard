@@ -176,8 +176,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
-  me: () => req<{ user: User }>("/api/auth/me"),
-  listProjects: () => req<{ projects: Project[] }>("/api/projects"),
   createProject: (data: Partial<Project>) =>
     req<{ project: Project }>("/api/projects", {
       method: "POST",
@@ -208,17 +206,11 @@ export const api = {
       method: "DELETE",
     }),
   audit: (id: string) => req<{ audit: AuditEntry[] }>(`/api/projects/${id}/audit`),
-  listAlerts: (id: string) => req<{ rules: { id: number; project_id: number; event: string; destination_url: string; enabled: number; created_at: string }[] }>(`/api/projects/${id}/alerts`),
-  addAlert: (id: string, rule: { event: string; destination_url: string; secret?: string; enabled?: boolean }) => req<{ rule: { id: number } }>(`/api/projects/${id}/alerts`, { method: "POST", body: JSON.stringify(rule) }),
-  removeAlert: (id: string, ruleId: number) => req<{ ok: boolean }>(`/api/projects/${id}/alerts/${ruleId}`, { method: "DELETE" }),
   githubStatus: () =>
     req<{ linked: boolean; account: { login: string } | null }>("/api/github/status"),
-  githubAuthUrl: () => req<{ url: string }>("/api/github/auth-url"),
   githubRepos: () => req<{ repos: { id: number; full_name: string; default_branch: string | null; private: boolean }[] }>("/api/github/repos"),
   linkGithubProject: (id: string, repo: { github_repo_id: number; full_name: string; default_branch?: string | null }) =>
     req<{ repository: unknown }>(`/api/projects/${id}/github/link`, { method: "POST", body: JSON.stringify(repo) }),
-  listWorkspaces: () => req<{ organizations: { id: number; name: string; slug: string; role: string }[] }>("/api/workspaces"),
-  createWorkspace: (name: string) => req<{ organization: { id: number; name: string; slug: string } }>("/api/workspaces", { method: "POST", body: JSON.stringify({ name }) }),
   createDeployment: (id: string, data: { commitSha?: string; branch?: string; environment?: "production" | "preview"; previewKey?: string }) =>
     req<{ deployment: Deployment; queued: boolean }>(`/api/projects/${id}/deployments`, {
       method: "POST",
@@ -288,8 +280,6 @@ export const api = {
     }>("/api/overview"),
   requestSeries: (id: string, hours = 24) =>
     req<{ points: { bucket: string; total: number; errors: number; avgMs: number | null; maxMs: number | null }[] }>(`/api/projects/${id}/metrics/series?type=requests&hours=${hours}`),
-  deploymentSeries: (id: string, days = 14) =>
-    req<{ points: { bucket: string; status: string; n: number }[] }>(`/api/projects/${id}/metrics/series?type=deployments&days=${days}`),
   runtime: (id: string) =>
     req<{ runtime: { running: boolean; cpuPercent?: number; memoryBytes?: number; memoryLimitBytes?: number; diskWritableBytes?: number; netRxBytes?: number; netTxBytes?: number } }>(`/api/projects/${id}/runtime`),
   containerLogs: (id: string, tail = 200) =>

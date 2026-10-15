@@ -11,7 +11,7 @@ function initialTheme(): Theme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-export function applyTheme(t: Theme) {
+function applyTheme(t: Theme) {
   document.documentElement.classList.toggle("dark", t === "dark");
   window.localStorage.setItem("shipyard_theme", t);
 }
