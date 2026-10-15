@@ -39,7 +39,7 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
     }
   }
 
-  usePolling(load, 5000, !deployment || isDeploymentActive(deployment.status), `${params.id}:${params.depId}`);
+  usePolling(load, 30000, !deployment || isDeploymentActive(deployment.status), `${params.id}:${params.depId}`);
 
   useEffect(() => {
     const token = typeof window !== "undefined" ? window.localStorage.getItem("shipyard_token") : null;
@@ -84,6 +84,19 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
     }
   }
 
+  async function promote() {
+    if (!deployment) return;
+    if (!window.confirm("Promote this preview build to production?")) return;
+    setActionBusy(true);
+    try {
+      const r = await api.promoteDeployment(params.id, params.depId);
+      window.location.href = `/projects/${params.id}/deployments/${r.deployment.id}`;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "promote_failed");
+      setActionBusy(false);
+    }
+  }
+
   const isCurrentLive = useMemo(
     () => deployment !== null && currentLiveId !== null && deployment.id === currentLiveId,
     [deployment, currentLiveId]
@@ -108,6 +121,9 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
               <button className={btnSecondary} onClick={cancel} disabled={actionBusy}>
                 {actionBusy ? "Working…" : "Cancel"}
               </button>
+            )}
+            {deployment.environment === "preview" && deployment.status === "SUCCESS" && deployment.instance_state === "RUNNING" && (
+              <button className={btnSecondary} onClick={promote} disabled={actionBusy}>{actionBusy ? "Working…" : "Promote to production"}</button>
             )}
             <button className={btnPrimary} onClick={rollback} disabled={actionBusy}>
               {actionBusy ? "Working…" : "Redeploy this commit"}
@@ -145,13 +161,14 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
 
       <Card>
         <div className="flex flex-wrap items-center gap-3">
-          <StatusBadge status={deployment.status} />
+           {deployment.environment === "preview" && <span className="border border-[var(--accent)]/30 bg-[var(--accent-subtle)] px-2 py-0.5 text-xs text-[var(--accent-strong)]">Preview{deployment.preview_key ? ` · ${deployment.preview_key}` : ""}</span>}
+           <StatusBadge status={deployment.status} />
           <span className="font-mono text-xs text-gray-500 dark:text-gray-400" title={deployment.commit_sha}>
             {deployment.commit_sha}
           </span>
            {(deployment.public_url || deployment.live_url) && (
              <a className="text-sm font-medium text-[var(--accent-strong)] hover:underline" href={deployment.public_url || deployment.live_url || "#"} target="_blank" rel="noreferrer">
-              {deployment.public_url ? "Public ↗" : isCurrentLive ? "Live ↗" : "Project live URL ↗"}
+               {deployment.environment === "preview" ? "Preview ↗" : deployment.public_url ? "Public ↗" : isCurrentLive ? "Live ↗" : "Project live URL ↗"}
             </a>
            )}
            {deployment.public_url && <HealthBadge state={deployment.public_health_state} />}

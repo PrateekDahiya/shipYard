@@ -22,7 +22,7 @@ router.get('/projects/:id/deployments/:depId', requireProjectAccess, controller.
 router.get('/projects/:id/deployments/:depId/logs', requireProjectAccess, controller.logs);
 router.get('/projects/:id/deployments/:depId/events', requireProjectAccess, controller.events);
 router.post('/projects/:id/deployments/:depId/cancel', requireProjectAccess, controller.cancel);
-router.post('/projects/:id/deployments/:depId/rollback', requireProjectAccess, async (req, res, next) => {
+  router.post('/projects/:id/deployments/:depId/rollback', requireProjectAccess, async (req, res, next) => {
   try {
     const result = await deploymentService.rollbackTo(req.user.id, req.project.id, req.params.depId);
     require('../utils/logger').info('deployment_rollback', {
@@ -31,7 +31,16 @@ router.post('/projects/:id/deployments/:depId/rollback', requireProjectAccess, a
       projectId: req.project.id,
       deploymentId: result.deployment.id,
       sourceId: req.params.depId,
-    });
+  });
+  router.post('/projects/:id/deployments/:depId/promote', requireProjectAccess, async (req, res, next) => {
+    try {
+      const result = await deploymentService.promotePreview(req.user.id, req.project.id, req.params.depId);
+      res.status(201).json({ ...result, requestId: req.id });
+    } catch (e) {
+      if (e.status) return res.status(e.status).json({ error: e.message, requestId: req.id });
+      next(e);
+    }
+  });
     res.status(201).json({ ...result, requestId: req.id });
   } catch (e) {
     if (e.status) {

@@ -77,6 +77,9 @@ export interface Deployment {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  environment?: "production" | "preview";
+  preview_key?: string | null;
+  promoted_from?: number | null;
 }
 
 export interface DeployEvent {
@@ -102,13 +105,17 @@ export function setToken(t: string | null) {
   if (typeof window === "undefined") return;
   if (t) window.localStorage.setItem("shipyard_token", t);
   else window.localStorage.removeItem("shipyard_token");
-  responseCache.clear();
-  inFlight.clear();
+  clearApiCache();
 }
 
 type CacheEntry = { value: unknown; expiresAt: number };
 const responseCache = new Map<string, CacheEntry>();
 const inFlight = new Map<string, Promise<unknown>>();
+
+export function clearApiCache() {
+  responseCache.clear();
+  inFlight.clear();
+}
 
 function cacheTtl(path: string) {
   if (path.includes("/container-logs") || path.includes("/logs") || path.includes("/events")) return 0;
@@ -153,8 +160,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     inFlight.set(key, request);
     request.finally(() => inFlight.delete(key)).catch(() => {});
   } else if (!isGet) {
-    responseCache.clear();
-    inFlight.clear();
+    clearApiCache();
   }
   return request;
 }
@@ -201,13 +207,16 @@ export const api = {
   githubStatus: () =>
     req<{ linked: boolean; account: { login: string } | null }>("/api/github/status"),
   githubAuthUrl: () => req<{ url: string }>("/api/github/auth-url"),
-  createDeployment: (id: string, data: { commitSha?: string; branch?: string }) =>
+  createDeployment: (id: string, data: { commitSha?: string; branch?: string; environment?: "production" | "preview"; previewKey?: string }) =>
     req<{ deployment: Deployment; queued: boolean }>(`/api/projects/${id}/deployments`, {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  listDeployments: (id: string) =>
-    req<{ deployments: Deployment[] }>(`/api/projects/${id}/deployments`),
+  listDeployments: (id: string, options?: { page?: number; pageSize?: number; status?: string; search?: string; from?: string; to?: string }) => {
+    const query = new URLSearchParams();
+    Object.entries(options || {}).forEach(([key, value]) => { if (value) query.set(key, String(value)); });
+    return req<{ deployments: Deployment[]; pagination?: { page: number; pageSize: number; total: number; pages: number } }>(`/api/projects/${id}/deployments${query.toString() ? `?${query}` : ""}`);
+  },
   getDeployment: (projectId: string, depId: string) =>
     req<{ deployment: Deployment }>(`/api/projects/${projectId}/deployments/${depId}`),
   deploymentEvents: (projectId: string, depId: string) =>
@@ -222,6 +231,8 @@ export const api = {
     req<{ deployment: Deployment; queued: boolean }>(`/api/projects/${projectId}/deployments/${depId}/rollback`, {
       method: "POST",
     }),
+  promoteDeployment: (projectId: string, depId: string) =>
+    req<{ deployment: Deployment; queued: boolean }>(`/api/projects/${projectId}/deployments/${depId}/promote`, { method: "POST" }),
   webhookConfig: (id: string) =>
     req<{ webhookUrl: string; linked: boolean; repository: string | null; secret: string | null }>(`/api/projects/${id}/webhook-config`),
   projectMetrics: (id: string) =>
@@ -258,7 +269,7 @@ export const api = {
     req<{ ok: boolean }>(`/api/projects/${id}`, { method: "DELETE" }),
   overview: () =>
     req<{
-      projects: (Project & { latest: { id: number; status: string; instance_state?: string | null; public_health_state?: string | null; commit_sha: string; live_url: string | null; public_url: string | null; created_at: string } | null })[];
+      projects: (Project & { latest: { id: number; status: string; environment?: string; instance_state?: string | null; public_health_state?: string | null; commit_sha: string; live_url: string | null; public_url: string | null; created_at: string } | null })[];
       counts: { live: number; failed: number; total: number };
       recentFailures: { id: number; project_id: number; project_name: string; status: string; commit_sha: string; created_at: string }[];
       platformUrl: string | null;

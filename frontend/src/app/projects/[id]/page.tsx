@@ -96,7 +96,7 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
       setEnv((await api.listEnv(params.id)).variables);
       setAudit((await api.audit(params.id)).audit);
       const deps = await api.listDeployments(params.id);
-      const latest = deps.deployments?.[0];
+       const latest = deps.deployments?.find((deployment) => (deployment.environment || "production") === "production") || deps.deployments?.[0];
       setAllDeployments(deps.deployments || []);
        const latestUrl = latest?.instance_state === "RUNNING" ? (latest.public_url || latest.live_url) : null;
        setLatestDeployment(latestUrl ? { url: latestUrl } : null);

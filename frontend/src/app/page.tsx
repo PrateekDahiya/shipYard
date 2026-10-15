@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { Card, Empty, ErrorBanner, HealthBadge, LiveLink, StatusBadge, Tabs, btnPrimary } from "@/components/ui";
 import { currentLiveUrl } from "@/lib/deployment";
 import { usePolling } from "@/lib/use-polling";
+import { useProjectEvents } from "@/lib/use-project-events";
 
 type Overview = Awaited<ReturnType<typeof api.overview>>;
 type ViewKey = "overview" | "deployments" | "issues";
@@ -33,7 +34,10 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<ViewKey>("overview");
 
-  usePolling(() => api.overview().then((overview) => { setData(overview); setError(null); }).catch((err) => setError(err instanceof Error ? err.message : "overview_failed")), 10000);
+  const refresh = () => api.overview().then((overview) => { setData(overview); setError(null); }).catch((err) => setError(err instanceof Error ? err.message : "overview_failed"));
+  const projectIds = useMemo(() => (data?.projects || []).map((project) => String(project.id)), [data]);
+  useProjectEvents(projectIds, refresh);
+  usePolling(refresh, 30000);
 
   const latestPerProject = useMemo(() => (data?.projects || []).filter((project) => project.latest).map((project) => ({ project, latest: project.latest! })).sort((a, b) => new Date(b.latest.created_at).getTime() - new Date(a.latest.created_at).getTime()), [data]);
   const stats = useMemo(() => {

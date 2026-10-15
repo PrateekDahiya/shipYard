@@ -10,6 +10,11 @@ describe('routing + docker labels + queue payload', () => {
     expect(router.liveUrlFor({ name: 'My App!' })).toBe('http://my-app.shipyard.localhost');
   });
 
+  test('preview hostname is isolated from production', () => {
+    expect(router.hostnameFor({ name: 'My App!' }, 'preview', 42)).toBe('preview-my-app-42.shipyard.localhost');
+    expect(router.liveUrlFor({ name: 'My App!' }, 'preview', 42)).toBe('http://preview-my-app-42.shipyard.localhost');
+  });
+
   test('traefik labels wire hostname to service port', () => {
     const labels = docker.traefikLabels({ hostname: 'my-app.shipyard.localhost', serviceName: 'shipyard-p1', port: 3000 });
     expect(labels['traefik.enable']).toBe('true');

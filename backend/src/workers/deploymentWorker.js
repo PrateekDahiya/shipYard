@@ -93,7 +93,8 @@ async function runDeployment(deploymentId, deps = {}) {
   }
   log.info('pipeline_started', { deploymentId, projectId: deployment.project_id, sha: deployment.commit_sha, trigger: deployment.trigger_type });
   const project = await projectRepo.getById(deployment.project_id);
-  const envRows = await envRepo.list(project.id, { includeSecretValues: true });
+  const environment = deployment.environment || 'production';
+  const envRows = await envRepo.list(project.id, { includeSecretValues: true, environment });
   const runtimeEnv = {};
   for (const r of envRows) {
     if (r.scope === 'runtime' || r.scope === 'both') {
@@ -202,8 +203,8 @@ async function runDeployment(deploymentId, deps = {}) {
 
     // 3. IMAGE
     const tag = `shipyard/p${project.id}-d${deploymentId}:latest`;
-    const hostname = router.hostnameFor(project);
-    const serviceName = `shipyard-p${project.id}`;
+    const hostname = router.hostnameFor(project, environment, deploymentId);
+    const serviceName = environment === 'preview' ? `shipyard-p${project.id}-preview-d${deploymentId}` : `shipyard-p${project.id}`;
     // Static sites are always served on nginx :80; servers use configured port.
     const appPort = isStatic ? 80 : deployment.app_port || project.app_port || 3000;
     // Build args for Docker build (only for generated images, not custom Dockerfiles)
@@ -304,12 +305,15 @@ async function runDeployment(deploymentId, deps = {}) {
     // 6. RUNNING → SUCCESS, retire previous instance
     await deploymentRepo.transition(deploymentId, 'RUNNING', 'application healthy');
     await deploymentRepo.appendLog(deploymentId, 'startup', 'stdout', 'health check passed — going live');
-    const liveUrl = router.liveUrlFor(project);
+    const liveUrl = router.liveUrlFor(project, environment, deploymentId);
     await getPool().query('UPDATE deployments SET live_url = ? WHERE id = ?', [liveUrl, deploymentId]);
     await getPool().query("UPDATE application_instances SET state = 'RUNNING' WHERE deployment_id = ?", [deploymentId]);
     const [oldInstances] = await getPool().query(
-      "SELECT container_id, deployment_id FROM application_instances WHERE project_id = ? AND deployment_id != ? AND state IN ('RUNNING','STARTING')",
-      [project.id, deploymentId]
+      `SELECT i.container_id, i.deployment_id FROM application_instances i
+       JOIN deployments old_d ON old_d.id = i.deployment_id
+       WHERE i.project_id = ? AND i.deployment_id != ? AND i.state IN ('RUNNING','STARTING')
+         AND old_d.environment = ? AND (? = 'production' OR old_d.preview_key = ?)`,
+      [project.id, deploymentId, environment, environment, deployment.preview_key || null]
     );
     const tunnelService = require('../services/tunnelService');
     for (const row of oldInstances) {
@@ -324,10 +328,12 @@ async function runDeployment(deploymentId, deps = {}) {
       // Retire the superseded build's tunnel (frees the slot; its link dies).
       await tunnelService.removeDeploymentTunnel(project.id, row.deployment_id, docker);
     }
-    await getPool().query(
-      "INSERT INTO domains (project_id, hostname, kind, verified) VALUES (?, ?, 'shipyard', 1) ON DUPLICATE KEY UPDATE project_id = VALUES(project_id)",
-      [project.id, hostname]
-    );
+    if (environment === 'production') {
+      await getPool().query(
+        "INSERT INTO domains (project_id, hostname, kind, verified) VALUES (?, ?, 'shipyard', 1) ON DUPLICATE KEY UPDATE project_id = VALUES(project_id)",
+        [project.id, hostname]
+      );
+    }
     log.info('pipeline_succeeded', { deploymentId, projectId: project.id, liveUrl });
     const succeeded = await deploymentRepo.transition(deploymentId, 'SUCCESS', `live at ${liveUrl}`);
     try {
@@ -341,7 +347,7 @@ async function runDeployment(deploymentId, deps = {}) {
     // localhost or a host-mapped port.
     await tunnelService.ensureDeploymentTunnel({
       projectId: project.id,
-      projectSlug: project.slug || project.name,
+      projectSlug: environment === 'preview' ? `${project.slug || project.name}-preview-${deployment.preview_key || deploymentId}` : project.slug || project.name,
       deploymentId,
       containerId: newContainerId,
       appPort,

@@ -5,8 +5,8 @@ const auditRepo = require('../repositories/auditRepo');
 
 async function list(req, res, next) {
   try {
-    const { includeSecretValues } = req.query;
-    const variables = await envRepo.list(req.project.id, { includeSecretValues: includeSecretValues !== 'false' });
+    const { includeSecretValues, environment } = req.query;
+    const variables = await envRepo.list(req.project.id, { includeSecretValues: includeSecretValues !== 'false', environment: environment || 'production' });
     res.status(200).json({ variables, requestId: req.id });
   } catch (e) {
     next(e);
@@ -15,8 +15,8 @@ async function list(req, res, next) {
 
 async function upsert(req, res, next) {
   try {
-    const { key, value, is_secret: isSecret, scope } = req.body || {};
-    const variable = await envRepo.upsert(req.project.id, { key, value, isSecret: isSecret !== false, scope: scope || 'both' });
+    const { key, value, is_secret: isSecret, scope, target_environment: targetEnvironment } = req.body || {};
+    const variable = await envRepo.upsert(req.project.id, { key, value, isSecret: isSecret !== false, scope: scope || 'both', targetEnvironment: targetEnvironment || 'production' });
     await auditRepo.record({
       userId: req.user.id,
       projectId: req.project.id,

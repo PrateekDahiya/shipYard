@@ -26,8 +26,8 @@ async function create(req, res, next) {
 
 async function list(req, res, next) {
   try {
-    const deployments = await deploymentRepo.listForProject(req.project.id);
-    res.status(200).json({ deployments, requestId: req.id });
+    const result = await deploymentRepo.listPageForProject(req.project.id, req.query || {});
+    res.status(200).json({ ...result, requestId: req.id });
   } catch (e) {
     next(e);
   }

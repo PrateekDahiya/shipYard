@@ -6,6 +6,7 @@ import { api, type Project } from "@/lib/api";
 import { Card, Empty, ErrorBanner, HealthBadge, LiveLink, StatusBadge, btnPrimary, btnSecondary, inputCls } from "@/components/ui";
 import { currentLiveUrl, isCurrentLiveDeployment, relativeTime } from "@/lib/deployment";
 import { usePolling } from "@/lib/use-polling";
+import { useProjectEvents } from "@/lib/use-project-events";
 
 type Overview = Awaited<ReturnType<typeof api.overview>>;
 type FleetRow = Project & { latest: Overview["projects"][number]["latest"] };
@@ -44,7 +45,8 @@ export default function Fleet() {
     }
   }
 
-  usePolling(load, 10000);
+  useProjectEvents(rows.map((row) => String(row.id)), load);
+  usePolling(load, 30000);
 
   async function saveRename(event: React.FormEvent) {
     event.preventDefault();

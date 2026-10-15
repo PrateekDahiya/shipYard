@@ -54,6 +54,8 @@ async function createDeployment(userId, projectId, source) {
     throw err;
   }
   const commit = await resolveCommitSha({ project, source });
+  const environment = source && source.environment === 'preview' ? 'preview' : 'production';
+  const previewKey = environment === 'preview' ? String((source && source.previewKey) || commit.branch || project.branch || 'preview').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) : null;
   const deployment = await deploymentRepo.create({
     projectId,
     commitSha: commit.sha,
@@ -65,9 +67,43 @@ async function createDeployment(userId, projectId, source) {
     buildCommand: project.build_command,
     runCommand: project.run_command,
     appPort: project.app_port,
+    environment,
+    previewKey,
   });
   const q = await queue.enqueue(deployment.id, projectId);
   await auditRepo.record({ userId, projectId, action: 'deployment.created', metadata: { deploymentId: deployment.id, queued: q.queued } });
+  return { deployment, queued: q.queued };
+}
+
+async function promotePreview(userId, projectId, sourceDeploymentId) {
+  const source = await deploymentRepo.getById(sourceDeploymentId);
+  if (!source || String(source.project_id) !== String(projectId)) {
+    const err = new Error('deployment_not_found');
+    err.status = 404;
+    throw err;
+  }
+  if (source.environment !== 'preview' || source.status !== 'SUCCESS' || source.instance_state !== 'RUNNING') {
+    const err = new Error('preview_not_ready');
+    err.status = 400;
+    throw err;
+  }
+  const project = await projectRepo.getById(projectId);
+  const deployment = await deploymentRepo.create({
+    projectId,
+    commitSha: source.commit_sha,
+    branch: source.branch,
+    commitMessage: source.commit_message,
+    commitAuthor: source.commit_author,
+    triggeredBy: userId,
+    triggerType: 'promotion',
+    buildCommand: project.build_command,
+    runCommand: project.run_command,
+    appPort: project.app_port,
+    environment: 'production',
+    promotedFrom: source.id,
+  });
+  const q = await queue.enqueue(deployment.id, projectId);
+  await auditRepo.record({ userId, projectId, action: 'deployment.promoted', metadata: { deploymentId: deployment.id, sourceId: source.id } });
   return { deployment, queued: q.queued };
 }
 
@@ -111,4 +147,4 @@ async function rollbackTo(userId, projectId, sourceDeploymentId) {
   return { deployment, queued: q.queued };
 }
 
-module.exports = { createDeployment, cancelDeployment, rollbackTo, resolveCommitSha };
+module.exports = { createDeployment, cancelDeployment, rollbackTo, promotePreview, resolveCommitSha };

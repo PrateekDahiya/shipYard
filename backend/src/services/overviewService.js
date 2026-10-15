@@ -17,11 +17,11 @@ async function overview(userId) {
   }
   const ids = projects.map((p) => p.id);
   const [latest] = await getPool().query(
-    `SELECT d.project_id, d.id, d.status, d.commit_sha, d.live_url, d.public_url, d.created_at,
+     `SELECT d.project_id, d.id, d.status, d.environment, d.commit_sha, d.live_url, d.public_url, d.created_at,
             (SELECT i.state FROM application_instances i WHERE i.deployment_id = d.id ORDER BY i.id DESC LIMIT 1) AS instance_state,
             (SELECT i.public_health_state FROM application_instances i WHERE i.deployment_id = d.id ORDER BY i.id DESC LIMIT 1) AS public_health_state
        FROM deployments d
-     JOIN (SELECT project_id, MAX(id) AS id FROM deployments WHERE project_id IN (${ids.map(() => '?').join(',')}) GROUP BY project_id) m
+      JOIN (SELECT project_id, MAX(id) AS id FROM deployments WHERE project_id IN (${ids.map(() => '?').join(',')}) AND environment = 'production' GROUP BY project_id) m
      ON m.id = d.id`,
     ids
   );

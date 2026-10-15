@@ -12,12 +12,15 @@ function slugify(name) {
     .slice(0, 48);
 }
 
-function hostnameFor(project) {
-  return `${slugify(project.name)}.${BASE_DOMAIN}`;
+function hostnameFor(project, environment = 'production', deploymentId) {
+  const slug = slugify(project.name);
+  return environment === 'preview'
+    ? `preview-${slug}-${String(deploymentId || 'latest')}.${BASE_DOMAIN}`
+    : `${slug}.${BASE_DOMAIN}`;
 }
 
-function liveUrlFor(project) {
-  return `http://${hostnameFor(project)}`;
+function liveUrlFor(project, environment = 'production', deploymentId) {
+  return `http://${hostnameFor(project, environment, deploymentId)}`;
 }
 
 module.exports = { BASE_DOMAIN, slugify, hostnameFor, liveUrlFor };

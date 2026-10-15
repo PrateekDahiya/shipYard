@@ -1,98 +1,187 @@
 # ShipYard
 
-Self-hosted application deployment platform (Render/Heroku-style, self-hosted, always-on).
-Push a repo → ShipYard clones, builds, health-checks, and serves it with a live URL.
+Self-hosted application deployment platform for teams that want a Render/Heroku-style workflow on their own infrastructure.
 
-## Status
+Push a repository, configure its runtime, deploy it through a worker, health-check the running instance, and expose it through a live URL.
 
-Phases 00–05 tested and working (see `plans/TRACKER.md`); Phase 06 hardening in progress.
-Docs: `docs/API.md`, `docs/OPERATIONS.md`, `docs/DEPLOYMENT.md`, `docs/TESTING.md`, `docs/SECURITY.md`.
+## Current Stage
 
-## Quick start (dev)
+Phases 00-05 are implemented and tested. Phase 06 hardening is in progress.
 
-Prerequisites: Docker Desktop, Node 20+. MySQL is external (Aiven) — the compose
-stack no longer ships a database container. Redis still runs locally.
+The current frontend stage includes:
 
-Pick exactly one runtime — the compose stack **or** `start-local.ps1`, never both
-(they bind the same ports and will fight; the script refuses to start on top
-of a running compose stack).
+- Responsive dark/light dashboard shell with a restrained charcoal and steel-blue palette.
+- Overview dashboard with fleet health, deployments, incidents, and service activity.
+- Service register with search, status filters, responsive table/card layouts, and rename support.
+- Direct `Open live` actions wherever a current running service is listed.
+- Project configuration tabs for overview, build, environment, logs, team, and activity.
+- Deployment history, status filters, redeploy/cancel actions, timelines, and live logs.
+- Client-side GET caching and request deduplication with explicit no-cache handling for secrets and live logs.
+- SSE-driven deployment refresh with polling fallback when a browser cannot keep an event stream.
+- Server-side deployment pagination, commit/branch search, date filters, and status filters.
+- Isolated preview deployments with preview hostnames and explicit promotion to production.
+- Mobile-safe forms, tables, navigation, and page actions.
 
-Easiest (Windows, keeps windows open so you can browse progress):
+The backend still requires a reachable MySQL database for authentication and project data. The development compose stack does not seed demo data. If the configured external MySQL host is unavailable, the UI can render but authenticated data requests will fail.
+
+See `plans/TRACKER.md` for phase progress and `SUGGESTIONS.md` for the current improvement backlog.
+
+## Quick Start
+
+Prerequisites: Node 20+, npm, Docker Desktop, Docker Compose, reachable MySQL, and Redis.
+
+MySQL is external in the current topology. Redis runs through Docker Compose.
+
+Use exactly one runtime for the frontend/backend ports. Do not run the compose frontend and the local frontend on the same port at the same time.
+
+### Compose Runtime
+
+```powershell
+Copy-Item .env.example .env
+# Fill DB_*, DB_ENV_KEY, JWT_SECRET, REDIS_* and any public URL settings.
+
+docker compose -f docker-compose.dev.yml up -d --build
+Invoke-RestMethod http://localhost:4000/health
+```
+
+The compose runtime exposes:
+
+- Frontend: `http://localhost:3000`
+- Backend health: `http://localhost:4000/health`
+- Traefik: `http://localhost:80`
+- Traefik dashboard: `http://localhost:8080`
+
+Recreate services after compose configuration changes:
+
+```powershell
+docker compose -f docker-compose.dev.yml up -d --build --force-recreate
+```
+
+### Windows Local Runner
 
 ```powershell
 .\start-local.ps1
-# frontend http://localhost:3000, backend http://localhost:4000/health
 ```
 
-Manual alternative:
+This starts the local backend, worker, and frontend windows and uses Docker for Redis and Traefik. It serves the frontend on `http://localhost:3000`.
 
-1. Copy env: `Copy-Item .env.example .env` and fill in `DB_HOST/DB_PORT/DB_USER/DB_PASS/DB_NAME`
-   (`DB_SSL=true` plus `DB_SSL_CA_PATH` for Aiven), `DB_ENV_KEY`, `JWT_SECRET`, `REDIS_HOST/REDIS_PORT`.
-2. Migrate the database: `cd backend; npm install; npm run db:migrate`
-3. Start the stack: `docker compose -f docker-compose.dev.yml up -d --build`
-   (frontend `http://localhost:3000`, backend `http://localhost:4000/health`)
-4. Local API dev instead of the container: `cd backend; npm start` → `GET http://localhost:4000/health`
-5. Local UI dev instead of the container: `cd frontend; npm install; npm run dev` → `http://localhost:3000`
+### Frontend Preview Port
 
-Compose changes (new services, env, limits, mounts) only take effect when
-containers are recreated: `docker compose -f docker-compose.dev.yml up -d --force-recreate`.
+To keep the Docker frontend untouched while working on the UI:
 
-## What you get
+```powershell
+Set-Location frontend
+npm install
+npm run dev -- --port 3060
+```
 
-- **Dashboard** (`/`) — live stats (projects, live, failed, never deployed), fleet mix
-  (server vs static), top projects, recent deployments and failures. Metric views
-  (Overview / Deployments / Failures) via the sidebar, auto-refreshes every 5s.
-- **Projects** (`/projects`, `/projects/new`) — searchable project cards with live
-  status; dedicated creation page (name, repo, branch, deploy type, build/run
-  config) that opens the new project on success; rename from the list or from
-  the project Overview tab.
-- **Project pages** (`/projects/[id]`) — tabbed (deep-linkable `?tab=`): Overview
-  (rename, branch & auto-deploy, live URL, webhook, rate limits), Build
-  configuration, Environment, Logs, Team, Activity. Sidebar navigation mirrors
-  the tabs and the section hierarchy.
-- **Deployments** — history with filters; only the newest successful build shows
-  the Live badge (older successes are marked Superseded); per-deployment detail
-  with timeline, redeploy/cancel, and logs.
-- **Logs tab** — persisted build output per deployment (search, stream/source
-  filters, line numbers, follow mode) plus **live container logs** streaming
-  stdout/stderr of the currently running container.
-- **Environment variables** — masked by default; per-variable eye toggle reveals
-  via `GET /env?includeSecretValues=true`; inline edit, bulk import, delete.
-  Values are AES-256-GCM encrypted at rest (`DB_ENV_KEY`).
-- **Metrics / Requests / Domains / Shell** — per-project request stats and
-  latency graphs, request inspector with filters, custom-domain verification,
-  and an audited container shell (WebSocket).
+Open `http://localhost:3060`. Next proxies `/api/*` to `http://localhost:4000` by default, so the preview port does not require a separate CORS change.
 
-## Layout
+### Backend Development
 
-- `frontend/` — Next.js 14 + TypeScript + Tailwind dashboard (12 routes: dashboard,
-  login, register, projects, project creation, project detail, deployments,
-  deployment detail, metrics, requests, domains, shell)
-- `backend/` — Node.js + Express (JS) API (`src/config controllers routes services
-  repositories middleware deployment workers runtime monitoring realtime utils`),
-  migrations in `backend/migrations/` (applied with `npm run db:migrate`)
-- `worker/` — deployment worker (Redis queue loop → shared pipeline in
-  `backend/src/workers/deploymentWorker.js`)
-- `docker-compose.dev.yml` / `docker-compose.prod.yml` — redis, backend, worker,
-  frontend, traefik (+ prometheus in prod only); every service capped at
-  `mem_limit: 1g`; backend mounts the Docker socket read-only for live
-  container stats and logs
-- `docs/` — architecture, API, operations, deployment, testing, security, decisions
-- `plans/` — phased implementation plans + tracker
-- `SUGGESTIONS.md` — user suggestion inbox
+```powershell
+Set-Location backend
+npm install
+npm run db:migrate
+npm test
+npm start
+```
 
-## API highlights
+Health endpoints:
 
-- `GET /api/overview` — dashboard rollup (projects + latest builds, counts, failures)
-- `GET /api/projects/:id/runtime` — live container resources; degrades to
-  `{ running: false }` instead of 500 when the container is unreachable
-- `GET /api/projects/:id/container-logs?tail=200` — live stdout/stderr of the
-  running container (Docker-multiplexed output demuxed server-side)
-- `GET /api/projects/:id/events?token=…` — SSE stream for deployment status/log
-  events (worker → Redis bus → API → browser)
-- `GET /api/projects/:id/env?includeSecretValues=true` — decrypted values for
-  the eye toggle (masked by default)
+```powershell
+Invoke-RestMethod http://localhost:4000/health
+Invoke-RestMethod http://localhost:4000/ready
+```
+
+`/ready` returns `503` until MySQL and Redis are reachable.
+
+### Demo Data
+
+After migrations have run, create safe UI-review data without queueing Docker deployments:
+
+```powershell
+Set-Location backend
+npm run db:seed:demo
+```
+
+Default demo credentials are `demo@shipyard.local` / `ShipYardDemo123!`. Override them with `DEMO_EMAIL` and `DEMO_PASSWORD` before running the seed command. The seed is idempotent and creates completed sample deployments plus request metadata.
+
+## Product Surface
+
+- **Overview** (`/`) - fleet health, online services, active deployments, public incidents, recent movement, and attention views.
+- **Services** (`/projects`) - searchable service register, status filters, responsive layouts, rename actions, and direct live-site links.
+- **New service** (`/projects/new`) - repository, branch, deployment type, Dockerfile, build/run commands, working directory, port, and restart policy.
+- **Project overview** (`/projects/:id`) - project identity, live deployment, branch, auto-deploy, webhook, rate limiting, and destructive actions.
+- **Build** (`/projects/:id?tab=build`) - source and runtime configuration including CPU, memory, output directory, and restart policy.
+- **Environment** (`/projects/:id?tab=environment`) - masked secrets, reveal/copy/edit/delete controls, and bulk `KEY=value` import.
+- **Logs** (`/projects/:id?tab=logs`) - persisted deployment logs and live container logs.
+- **Deployments** (`/projects/:id/deployments`) - paginated history, commit/branch search, date/status filters, production or preview targets, current live deployment, redeploy, cancel, promotion, and direct live-site links.
+- **Deployment detail** (`/projects/:id/deployments/:depId`) - status, metadata, event timeline, rollback, and logs.
+- **Metrics** (`/projects/:id/metrics`) - request totals, error rate, latency charts, deployment summaries, and runtime resources.
+- **Requests** (`/projects/:id/requests`) - method/status/path filters and expandable request metadata.
+- **Domains** (`/projects/:id/domains`) - custom domain registration, verification, and removal.
+- **Shell** (`/projects/:id/shell`) - audited WebSocket shell sessions for running containers.
+
+Preview deployments use a separate hostname such as `preview-service-key-123.shipyard.localhost`, receive only preview-targeted environment variables, and never retire the production instance. A successful preview can be promoted by creating a new production deployment from the same commit.
+
+## Caching And Freshness
+
+The frontend keeps an in-memory, auth-scoped cache for successful GET requests and deduplicates concurrent requests. Current TTLs are intentionally short for operational data:
+
+- Overview: 5 seconds.
+- Deployments: 2.5 seconds.
+- Metrics: 15 seconds.
+- Requests: 10 seconds.
+- Project/configuration data: 30 seconds.
+
+Deployment status changes are also delivered through the project SSE stream. Polling remains as a fallback for disconnected clients.
+
+Mutating requests clear the cache. Secret environment reads, deployment events, deployment logs, and container logs bypass the cache completely.
+
+## Repository Layout
+
+- `frontend/` - Next.js 14, React 18, TypeScript, and Tailwind dashboard.
+- `backend/` - Node.js + Express API, migrations, deployment services, runtime monitoring, and WebSocket/SSE support.
+- `worker/` - Redis-backed deployment worker using the shared deployment pipeline.
+- `docker-compose.dev.yml` / `docker-compose.prod.yml` - local and production service definitions.
+- `docs/` - architecture, API, development, operations, deployment, testing, security, and ADRs.
+- `plans/` - phased implementation plans and tracker.
+- `SUGGESTIONS.md` - applied suggestions and prioritized open product backlog.
+
+## API Highlights
+
+- `GET /api/overview` - authenticated fleet rollup with latest deployment and public health state per service.
+- `GET /api/projects` - authenticated service list.
+- `GET /api/projects/:id/runtime` - live CPU, memory, disk, and network resource usage.
+- `GET /api/projects/:id/container-logs?tail=200` - live container output.
+- `GET /api/projects/:id/events?token=...` - deployment status/log SSE stream.
+- `GET /api/projects/:id/env?includeSecretValues=true` - explicit decrypted secret reveal endpoint.
+- `GET /health` - liveness.
+- `GET /ready` - MySQL and Redis readiness.
+- `GET /metrics` - Prometheus metrics.
+
+## Verification
+
+Frontend:
+
+```powershell
+Set-Location frontend
+npm run lint
+npm run build
+npm run test:e2e
+```
+
+Backend:
+
+```powershell
+Set-Location backend
+npm run lint
+npm test
+```
+
+The UI has been verified in Chrome at desktop and mobile viewport sizes, including the `3060` preview port.
 
 ## Security
 
-Real credentials live only in `.env` (gitignored) or the environment. Never commit secrets.
+Real credentials belong only in `.env` or the environment. Never commit secrets, database credentials, JWT keys, certificates, or decrypted environment values.

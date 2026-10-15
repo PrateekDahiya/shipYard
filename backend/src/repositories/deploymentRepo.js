@@ -30,7 +30,50 @@ async function listForProject(projectId, limit = 50) {
   return rows;
 }
 
-async function create({ projectId, commitSha, branch, commitMessage, commitAuthor, triggeredBy, triggerType, buildCommand, runCommand, appPort, rollbackOf }) {
+async function listPageForProject(projectId, query = {}) {
+  const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number.parseInt(query.pageSize, 10) || 25));
+  const offset = (page - 1) * pageSize;
+  const where = ['d.project_id = ?'];
+  const params = [projectId];
+  const status = String(query.status || '').trim().toUpperCase();
+  if (status === 'SUCCESS') {
+    where.push('d.status = ?');
+    params.push('SUCCESS');
+  } else if (status === 'FAILED') {
+    where.push("d.status LIKE '%FAIL%'");
+  } else if (status === 'ACTIVE') {
+    where.push("d.status IN ('QUEUED','CLONING','BUILDING','IMAGE_CREATED','STARTING','HEALTH_CHECKING','RUNNING')");
+  } else if (status && status !== 'ALL') {
+    where.push('d.status = ?');
+    params.push(status);
+  }
+  if (query.search) {
+    where.push('(d.commit_sha LIKE ? OR d.commit_message LIKE ? OR d.branch LIKE ?)');
+    const search = `%${String(query.search).slice(0, 100)}%`;
+    params.push(search, search, search);
+  }
+  if (query.from) {
+    where.push('d.created_at >= ?');
+    params.push(query.from);
+  }
+  if (query.to) {
+    where.push('d.created_at < DATE_ADD(?, INTERVAL 1 DAY)');
+    params.push(query.to);
+  }
+  const clause = where.join(' AND ');
+  const [countRows] = await getPool().query(`SELECT COUNT(*) AS total FROM deployments d WHERE ${clause}`, params);
+  const [rows] = await getPool().query(
+    `SELECT d.*, (SELECT i.state FROM application_instances i WHERE i.deployment_id = d.id ORDER BY i.id DESC LIMIT 1) AS instance_state,
+            (SELECT i.public_health_state FROM application_instances i WHERE i.deployment_id = d.id ORDER BY i.id DESC LIMIT 1) AS public_health_state
+       FROM deployments d WHERE ${clause} ORDER BY d.id DESC LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
+  const total = Number(countRows[0] && countRows[0].total) || 0;
+  return { deployments: rows, pagination: { page, pageSize, total, pages: Math.ceil(total / pageSize) } };
+}
+
+async function create({ projectId, commitSha, branch, commitMessage, commitAuthor, triggeredBy, triggerType, buildCommand, runCommand, appPort, rollbackOf, environment = 'production', previewKey = null, promotedFrom = null }) {
   if (!commitSha || typeof commitSha !== 'string' || !/^[0-9a-f]{7,64}$/i.test(commitSha.trim())) {
     const err = new Error('invalid_commit_sha');
     err.status = 400;
@@ -38,8 +81,8 @@ async function create({ projectId, commitSha, branch, commitMessage, commitAutho
   }
   const [result] = await getPool().query(
     `INSERT INTO deployments
-     (project_id, commit_sha, branch, commit_message, commit_author, triggered_by, trigger_type, rollback_of, status, build_command, run_command, app_port)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?)`,
+     (project_id, commit_sha, branch, commit_message, commit_author, triggered_by, trigger_type, rollback_of, status, environment, preview_key, promoted_from, build_command, run_command, app_port)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?, ?, ?)`,
     [
       projectId,
       commitSha,
@@ -49,6 +92,9 @@ async function create({ projectId, commitSha, branch, commitMessage, commitAutho
       triggeredBy || null,
       triggerType || 'manual',
       rollbackOf || null,
+      environment || 'production',
+      previewKey || null,
+      promotedFrom || null,
       buildCommand || null,
       runCommand || null,
       appPort ?? null,
@@ -155,4 +201,4 @@ async function eventsFor(deploymentId) {
   return rows;
 }
 
-module.exports = { getById, listForProject, create, transition, appendLog, logsFor, eventsFor, setPublicUrl };
+module.exports = { getById, listForProject, listPageForProject, create, transition, appendLog, logsFor, eventsFor, setPublicUrl };

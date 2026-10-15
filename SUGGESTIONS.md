@@ -18,7 +18,18 @@ apply what fits, and flip the status. Statuses: `OPEN` → `APPLIED` (or `DECLIN
 | S-011 | 2026-10-04 | Redeploy button on each history deployment | Frontend deployments | APPLIED | Per-row redeploy action re-creating a deployment from that commit. Reuses rollback endpoint semantics. Pure UI on existing APIs. |
 
 | S-012 | 2026-10-04 | Make memory and disk adjustable per project in advanced settings | Frontend build config | APPLIED | Added cpu_limit and memory_limit fields to project build configuration on project page. Backend already supported `cpu_limit`/`memory_limit` on projects via PATCH `/api/projects/:id`. Fields accept human-readable (512M, 1G) or byte values. Save validates via `parseCpu`/`parseMemory` utils. |
+| S-013 | 2026-10-15 | Add a local demo mode with seeded users, services, deployments, and request data | Developer experience | APPLIED | Added idempotent `npm run db:seed:demo`; it creates a demo user, services, completed deployments, instances, and request metadata without queueing Docker work. |
+| S-014 | 2026-10-15 | Add Playwright smoke tests for every route and mobile layout | Frontend quality / P06 | APPLIED | Added desktop/mobile Chrome smoke coverage for auth, service creation, service lists, project deployments, and horizontal overflow. |
+| S-015 | 2026-10-15 | Replace routine polling with a shared SSE event stream and targeted cache invalidation | Frontend/backend performance | APPLIED | Added shared project SSE refresh hook and reduced polling to fallback intervals; cache invalidation occurs on deployment events and mutations. |
+| S-016 | 2026-10-15 | Add deployment pagination, search by commit, and date/status filters | Frontend deployments | APPLIED | Added server-side page counts, status/search/date query filters, responsive controls, and previous/next pagination. |
+| S-017 | 2026-10-15 | Add preview environments and promotion between environments | Deployment workflow | APPLIED | Added production/preview deployment targets, isolated preview hostnames and environment-scoped secrets, production-safe retirement guards, and promote-to-production flow. Branch/PR automation remains a follow-up. |
+| S-018 | 2026-10-15 | Add GitHub repository picker and pull request deployment integration | Source control | OPEN | Reduce manual repository URL entry and connect deployments to PR checks and commit metadata. |
+| S-019 | 2026-10-15 | Add environment variable versioning, diff, and rollback | Secrets/configuration | OPEN | Make configuration changes reviewable and reversible without exposing secret values. |
+| S-020 | 2026-10-15 | Add alert policies and notification integrations | Observability | OPEN | Notify on failed deploys, unhealthy services, repeated restarts, queue delays, and certificate/domain failures. |
+| S-021 | 2026-10-15 | Add log retention, archival, and configurable cleanup jobs | Operations / P06 | OPEN | `build_logs` and `request_logs` are currently unbounded according to the operations runbook. |
+| S-022 | 2026-10-15 | Add organization/workspace management with seats, teams, and audit export | Identity and access | OPEN | Extend project membership into durable workspaces with invitations, SSO options, and exportable audit history. |
+| S-023 | 2026-10-15 | Add database readiness diagnostics and a supported local MySQL profile | Developer experience / Operations | OPEN | Make DNS, TLS, migration, and credential failures visible from the UI and provide a reproducible local fallback. |
 
 ## How to add
 
-Append a row with the next ID (`S-003`, …), date, verbatim suggestion, area/phase, and `OPEN`.
+Append a row with the next ID (`S-024`, …), date, verbatim suggestion, area/phase, and `OPEN`.

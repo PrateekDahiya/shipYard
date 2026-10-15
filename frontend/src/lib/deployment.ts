@@ -8,11 +8,11 @@ export function isDeploymentFailed(status: string) {
   return status.includes("FAIL");
 }
 
-export function isCurrentLiveDeployment(deployment: { status: string; instance_state?: string | null }) {
-  return (deployment.status === "SUCCESS" || deployment.status === "RUNNING") && deployment.instance_state === "RUNNING";
+export function isCurrentLiveDeployment(deployment: { status: string; instance_state?: string | null; environment?: string | null }) {
+  return (deployment.environment || "production") === "production" && (deployment.status === "SUCCESS" || deployment.status === "RUNNING") && deployment.instance_state === "RUNNING";
 }
 
-export function currentLiveUrl(deployment?: { status: string; instance_state?: string | null; public_url?: string | null; live_url?: string | null } | null) {
+export function currentLiveUrl(deployment?: { status: string; instance_state?: string | null; environment?: string | null; public_url?: string | null; live_url?: string | null } | null) {
   if (!deployment || !isCurrentLiveDeployment(deployment)) return null;
   return deployment.public_url || deployment.live_url || null;
 }
