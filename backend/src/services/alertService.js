@@ -4,7 +4,15 @@ const crypto = require('crypto');
 const { getPool } = require('../config/db');
 
 async function notify(projectId, event, payload) {
-  const [rules] = await getPool().query('SELECT * FROM alert_rules WHERE project_id = ? AND event = ? AND enabled = 1', [projectId, event]);
+  let rules;
+  try {
+    [rules] = await getPool().query('SELECT * FROM alert_rules WHERE project_id = ? AND event = ? AND enabled = 1', [projectId, event]);
+  } catch (error) {
+    // Alerting is optional and must never take down deployment/watchdog work
+    // when its migration has not been applied yet.
+    require('../utils/logger').warn('alert_rules_unavailable', { projectId, event, message: error.message });
+    return;
+  }
   await Promise.all((rules || []).map(async (rule) => {
     try {
       const body = JSON.stringify({ event, projectId, at: new Date().toISOString(), ...payload });
