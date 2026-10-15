@@ -14,8 +14,8 @@ function slugify(name) {
 
 function hostnameFor(project, environment = 'production', deploymentId) {
   const slug = slugify(project.name);
-  return environment === 'preview'
-    ? `preview-${slug}-${String(deploymentId || 'latest')}.${BASE_DOMAIN}`
+  return environment !== 'production'
+    ? `${environment}-${slug}-${String(deploymentId || 'latest')}.${BASE_DOMAIN}`
     : `${slug}.${BASE_DOMAIN}`;
 }
 

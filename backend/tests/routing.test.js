@@ -3,6 +3,7 @@
 const router = require('../src/runtime/router');
 const docker = require('../src/runtime/docker');
 const queue = require('../src/queues/deploymentQueue');
+const { serviceFolder } = require('../src/workers/deploymentWorker');
 
 describe('routing + docker labels + queue payload', () => {
   test('hostname is stable and slugified', () => {
@@ -13,6 +14,11 @@ describe('routing + docker labels + queue payload', () => {
   test('preview hostname is isolated from production', () => {
     expect(router.hostnameFor({ name: 'My App!' }, 'preview', 42)).toBe('preview-my-app-42.shipyard.localhost');
     expect(router.liveUrlFor({ name: 'My App!' }, 'preview', 42)).toBe('http://preview-my-app-42.shipyard.localhost');
+  });
+
+  test('staging hostname and service workspace are isolated', () => {
+    expect(router.hostnameFor({ name: 'My App!' }, 'staging', 42)).toBe('staging-my-app-42.shipyard.localhost');
+    expect(serviceFolder({ id: 2, name: 'Payments API' })).toBe('payments-api');
   });
 
   test('traefik labels wire hostname to service port', () => {

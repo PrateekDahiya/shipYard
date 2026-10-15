@@ -82,6 +82,7 @@ services:
       # at /backend (all pure-JS deps, safe to bind-mount)
       - ./backend:/backend:ro
       - ./certs:/certs:ro
+      - shipyard-builds:/tmp/shipyard-builds
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       redis:
@@ -152,3 +153,4 @@ services:
 volumes:
   redis-data:
   tailscale-platform-state:
+  shipyard-builds:

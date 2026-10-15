@@ -17,6 +17,14 @@ function workRoot() {
   return process.env.SHIPYARD_WORKDIR || path.join(os.tmpdir(), 'shipyard-builds');
 }
 
+function serviceFolder(project) {
+  return String(project.slug || project.name || `project-${project.id}`)
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64) || `project-${project.id}`;
+}
+
 // Stream callbacks are invoked by child-process/Docker emitters, not awaited
 // by the emitter. Log persistence is observability-only and must never turn a
 // deleted deployment or transient DB failure into an unhandled rejection that
@@ -102,7 +110,7 @@ async function runDeployment(deploymentId, deps = {}) {
     }
   }
 
-  const dir = path.join(workRoot(), `d${deploymentId}`);
+  const dir = path.join(workRoot(), 'services', serviceFolder(project), 'deployments', `d${deploymentId}`);
   fs.mkdirSync(dir, { recursive: true });
   let newContainerId = null;
 
@@ -204,7 +212,7 @@ async function runDeployment(deploymentId, deps = {}) {
     // 3. IMAGE
     const tag = `shipyard/p${project.id}-d${deploymentId}:latest`;
     const hostname = router.hostnameFor(project, environment, deploymentId);
-    const serviceName = environment === 'preview' ? `shipyard-p${project.id}-preview-d${deploymentId}` : `shipyard-p${project.id}`;
+    const serviceName = environment !== 'production' ? `shipyard-p${project.id}-${environment}-d${deploymentId}` : `shipyard-p${project.id}`;
     // Static sites are always served on nginx :80; servers use configured port.
     const appPort = isStatic ? 80 : deployment.app_port || project.app_port || 3000;
     // Build args for Docker build (only for generated images, not custom Dockerfiles)
@@ -347,11 +355,13 @@ async function runDeployment(deploymentId, deps = {}) {
     // localhost or a host-mapped port.
     await tunnelService.ensureDeploymentTunnel({
       projectId: project.id,
-      projectSlug: environment === 'preview' ? `${project.slug || project.name}-preview-${deployment.preview_key || deploymentId}` : project.slug || project.name,
+      projectSlug: environment !== 'production' ? `${project.slug || project.name}-${environment}-${deployment.preview_key || deploymentId}` : project.slug || project.name,
       deploymentId,
       containerId: newContainerId,
       appPort,
       docker,
+      environment,
+      previewKey: deployment.preview_key || null,
     });
     return succeeded;
   } catch (e) {
@@ -360,4 +370,4 @@ async function runDeployment(deploymentId, deps = {}) {
   }
 }
 
-module.exports = { runDeployment, runCmd, workRoot, appendLogBestEffort };
+module.exports = { runDeployment, runCmd, workRoot, serviceFolder, appendLogBestEffort };

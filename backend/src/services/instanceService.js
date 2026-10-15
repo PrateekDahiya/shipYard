@@ -9,7 +9,10 @@ const auditRepo = require('../repositories/auditRepo');
 
 async function currentInstance(projectId) {
   const [rows] = await getPool().query(
-    "SELECT * FROM application_instances WHERE project_id = ? AND state IN ('RUNNING','STARTING','UNHEALTHY') ORDER BY id DESC LIMIT 1",
+    `SELECT i.* FROM application_instances i
+     JOIN deployments d ON d.id = i.deployment_id
+     WHERE i.project_id = ? AND i.state IN ('RUNNING','STARTING','UNHEALTHY') AND d.environment = 'production'
+     ORDER BY i.id DESC LIMIT 1`,
     [projectId]
   );
   return rows[0] || null;
@@ -91,7 +94,8 @@ async function stop(userId, projectId, docker) {
 
 async function start(userId, projectId, docker) {
   const [rows] = await getPool().query(
-    'SELECT * FROM deployments WHERE project_id = ? AND image_tag IS NOT NULL ORDER BY id DESC LIMIT 1',
+    `SELECT * FROM deployments WHERE project_id = ? AND image_tag IS NOT NULL AND environment = 'production'
+     ORDER BY id DESC LIMIT 1`,
     [projectId]
   );
   const dep = rows[0];

@@ -122,7 +122,7 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
                 {actionBusy ? "Working…" : "Cancel"}
               </button>
             )}
-            {deployment.environment === "preview" && deployment.status === "SUCCESS" && deployment.instance_state === "RUNNING" && (
+            {deployment.environment !== "production" && deployment.status === "SUCCESS" && deployment.instance_state === "RUNNING" && (
               <button className={btnSecondary} onClick={promote} disabled={actionBusy}>{actionBusy ? "Working…" : "Promote to production"}</button>
             )}
             <button className={btnPrimary} onClick={rollback} disabled={actionBusy}>
@@ -161,14 +161,14 @@ export default function DeploymentDetail({ params }: { params: { id: string; dep
 
       <Card>
         <div className="flex flex-wrap items-center gap-3">
-           {deployment.environment === "preview" && <span className="border border-[var(--accent)]/30 bg-[var(--accent-subtle)] px-2 py-0.5 text-xs text-[var(--accent-strong)]">Preview{deployment.preview_key ? ` · ${deployment.preview_key}` : ""}</span>}
+           {deployment.environment !== "production" && <span className="border border-[var(--accent)]/30 bg-[var(--accent-subtle)] px-2 py-0.5 text-xs text-[var(--accent-strong)]">{deployment.environment === "staging" ? "Staging" : "Preview"}{deployment.preview_key ? ` · ${deployment.preview_key}` : ""}</span>}
            <StatusBadge status={deployment.status} />
           <span className="font-mono text-xs text-gray-500 dark:text-gray-400" title={deployment.commit_sha}>
             {deployment.commit_sha}
           </span>
            {(deployment.public_url || deployment.live_url) && (
              <a className="text-sm font-medium text-[var(--accent-strong)] hover:underline" href={deployment.public_url || deployment.live_url || "#"} target="_blank" rel="noreferrer">
-               {deployment.environment === "preview" ? "Preview ↗" : deployment.public_url ? "Public ↗" : isCurrentLive ? "Live ↗" : "Project live URL ↗"}
+               {deployment.environment !== "production" ? `${deployment.environment === "staging" ? "Staging" : "Preview"} ↗` : deployment.public_url ? "Public ↗" : isCurrentLive ? "Live ↗" : "Project live URL ↗"}
             </a>
            )}
            {deployment.public_url && <HealthBadge state={deployment.public_health_state} />}

@@ -59,7 +59,10 @@ function logger() {
 
 // Start a sidecar for a live deployment and persist its public URL.
 // Returns the URL string, or null when tunnels are disabled/unavailable.
-async function ensureDeploymentTunnel({ projectId, projectSlug, deploymentId, containerId, appPort, docker }) {
+async function ensureDeploymentTunnel({ projectId, projectSlug, deploymentId, containerId, appPort, docker, environment = 'production', previewKey = null }) {
+  const tailscaleVolume = environment === 'production'
+    ? `shipyard-tailscale-project-${projectId}`
+    : `shipyard-tailscale-project-${projectId}-${environment}-${tailscaleSlug(previewKey || deploymentId)}`;
   if (!tunnelsEnabled()) {
     return null;
   }
@@ -112,7 +115,7 @@ async function ensureDeploymentTunnel({ projectId, projectSlug, deploymentId, co
       },
       memoryBytes: parseMemory('64M'),
       cmd: isTailscale ? tsCommand : ['tunnel', '--url', upstream, '--no-autoupdate'],
-      binds: isTailscale ? [`shipyard-tailscale-project-${projectId}:/var/lib/tailscale`] : undefined,
+      binds: isTailscale ? [`${tailscaleVolume}:/var/lib/tailscale`] : undefined,
       capAdd: isTailscale ? ['NET_ADMIN'] : undefined,
       devices: isTailscale ? [{ PathOnHost: '/dev/net/tun', PathInContainer: '/dev/net/tun', CgroupPermissions: 'rwm' }] : undefined,
     });

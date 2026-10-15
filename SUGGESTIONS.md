@@ -29,6 +29,7 @@ apply what fits, and flip the status. Statuses: `OPEN` → `APPLIED` (or `DECLIN
 | S-021 | 2026-10-15 | Add log retention, archival, and configurable cleanup jobs | Operations / P06 | APPLIED | Added idempotent `npm run db:cleanup:logs` cleanup for build logs, request logs, and deployment events using `LOG_RETENTION_DAYS`. |
 | S-022 | 2026-10-15 | Add organization/workspace management with seats, teams, and audit export | Identity and access | APPLIED | Added organization/member schema, automatic workspace bootstrap on registration, and authenticated workspace list/create API foundation. Project-level migration and billing/SSO remain follow-up work. |
 | S-023 | 2026-10-15 | Add database readiness diagnostics and a supported local MySQL profile | Developer experience / Operations | OPEN | Make DNS, TLS, migration, and credential failures visible from the UI and provide a reproducible local fallback. |
+| S-024 | 2026-10-16 | Allow deployments on staging with a separate Tailscale URL and service-scoped Docker folders | Deployment workflow | APPLIED | Added first-class staging target with isolated hostname/Tailscale identity, production-safe retirement, environment filtering, and persistent service-scoped worker folders. |
 
 ## How to add
 

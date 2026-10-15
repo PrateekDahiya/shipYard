@@ -54,8 +54,8 @@ async function createDeployment(userId, projectId, source) {
     throw err;
   }
   const commit = await resolveCommitSha({ project, source });
-  const environment = source && source.environment === 'preview' ? 'preview' : 'production';
-  const previewKey = environment === 'preview' ? String((source && source.previewKey) || commit.branch || project.branch || 'preview').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) : null;
+  const environment = source && ['staging', 'preview'].includes(source.environment) ? source.environment : 'production';
+  const previewKey = environment !== 'production' ? String((source && source.previewKey) || commit.branch || project.branch || environment).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) : null;
   const deployment = await deploymentRepo.create({
     projectId,
     commitSha: commit.sha,
@@ -82,7 +82,7 @@ async function promotePreview(userId, projectId, sourceDeploymentId) {
     err.status = 404;
     throw err;
   }
-  if (source.environment !== 'preview' || source.status !== 'SUCCESS' || source.instance_state !== 'RUNNING') {
+  if (!['preview', 'staging'].includes(source.environment) || source.status !== 'SUCCESS' || source.instance_state !== 'RUNNING') {
     const err = new Error('preview_not_ready');
     err.status = 400;
     throw err;

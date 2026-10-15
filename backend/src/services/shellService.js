@@ -13,7 +13,10 @@ const SESSION_TTL_MINUTES = 15;
 
 async function runningInstance(projectId) {
   const [rows] = await getPool().query(
-    "SELECT * FROM application_instances WHERE project_id = ? AND state = 'RUNNING' ORDER BY id DESC LIMIT 1",
+    `SELECT i.* FROM application_instances i
+     JOIN deployments d ON d.id = i.deployment_id
+     WHERE i.project_id = ? AND i.state = 'RUNNING' AND d.environment = 'production'
+     ORDER BY i.id DESC LIMIT 1`,
     [projectId]
   );
   return rows[0] || null;

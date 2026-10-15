@@ -48,6 +48,11 @@ async function listPageForProject(projectId, query = {}) {
     where.push('d.status = ?');
     params.push(status);
   }
+  const environment = String(query.environment || '').trim().toLowerCase();
+  if (['production', 'staging', 'preview'].includes(environment)) {
+    where.push('d.environment = ?');
+    params.push(environment);
+  }
   if (query.search) {
     where.push('(d.commit_sha LIKE ? OR d.commit_message LIKE ? OR d.branch LIKE ?)');
     const search = `%${String(query.search).slice(0, 100)}%`;

@@ -21,7 +21,10 @@ function cpuPercent(stat) {
 async function runtimeStats(projectId, docker) {
   const { getPool } = require('../config/db');
   const [rows] = await getPool().query(
-    "SELECT container_id, deployment_id FROM application_instances WHERE project_id = ? AND state = 'RUNNING' ORDER BY id DESC LIMIT 1",
+    `SELECT i.container_id, i.deployment_id FROM application_instances i
+     JOIN deployments d ON d.id = i.deployment_id
+     WHERE i.project_id = ? AND i.state = 'RUNNING' AND d.environment = 'production'
+     ORDER BY i.id DESC LIMIT 1`,
     [projectId]
   );
   if (rows.length === 0) {

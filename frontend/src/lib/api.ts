@@ -77,7 +77,7 @@ export interface Deployment {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
-  environment?: "production" | "preview";
+  environment?: "production" | "staging" | "preview";
   preview_key?: string | null;
   promoted_from?: number | null;
 }
@@ -211,12 +211,12 @@ export const api = {
   githubRepos: () => req<{ repos: { id: number; full_name: string; default_branch: string | null; private: boolean }[] }>("/api/github/repos"),
   linkGithubProject: (id: string, repo: { github_repo_id: number; full_name: string; default_branch?: string | null }) =>
     req<{ repository: unknown }>(`/api/projects/${id}/github/link`, { method: "POST", body: JSON.stringify(repo) }),
-  createDeployment: (id: string, data: { commitSha?: string; branch?: string; environment?: "production" | "preview"; previewKey?: string }) =>
+  createDeployment: (id: string, data: { commitSha?: string; branch?: string; environment?: "production" | "staging" | "preview"; previewKey?: string }) =>
     req<{ deployment: Deployment; queued: boolean }>(`/api/projects/${id}/deployments`, {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  listDeployments: (id: string, options?: { page?: number; pageSize?: number; status?: string; search?: string; from?: string; to?: string }) => {
+  listDeployments: (id: string, options?: { page?: number; pageSize?: number; status?: string; environment?: string; search?: string; from?: string; to?: string }) => {
     const query = new URLSearchParams();
     Object.entries(options || {}).forEach(([key, value]) => { if (value) query.set(key, String(value)); });
     return req<{ deployments: Deployment[]; pagination?: { page: number; pageSize: number; total: number; pages: number } }>(`/api/projects/${id}/deployments${query.toString() ? `?${query}` : ""}`);

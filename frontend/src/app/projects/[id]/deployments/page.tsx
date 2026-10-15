@@ -14,10 +14,11 @@ export default function Deployments({ params }: { params: { id: string } }) {
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [commitSha, setCommitSha] = useState("");
   const [branch, setBranch] = useState("main");
-  const [environment, setEnvironment] = useState<"production" | "preview">("production");
+  const [environment, setEnvironment] = useState<"production" | "staging" | "preview">("production");
   const [previewKey, setPreviewKey] = useState("preview");
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
+  const [envFilter, setEnvFilter] = useState<"all" | "production" | "staging" | "preview">("all");
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -27,7 +28,7 @@ export default function Deployments({ params }: { params: { id: string } }) {
 
   async function load(pageNumber = page) {
     try {
-      const result = await api.listDeployments(params.id, { page: pageNumber, pageSize: 25, status: filter, search, from, to });
+      const result = await api.listDeployments(params.id, { page: pageNumber, pageSize: 25, status: filter, environment: envFilter === "all" ? undefined : envFilter, search, from, to });
       setDeployments(result.deployments);
       setPagination(result.pagination || { page: pageNumber, pageSize: 25, total: result.deployments.length, pages: 1 });
       setPage(pageNumber);
@@ -42,14 +43,14 @@ export default function Deployments({ params }: { params: { id: string } }) {
   useEffect(() => {
     void load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, search, from, to, params.id]);
+  }, [filter, envFilter, search, from, to, params.id]);
 
   async function deploy(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setDeploying(true);
     try {
-      await api.createDeployment(params.id, { commitSha: commitSha || undefined, branch, environment, previewKey: environment === "preview" ? previewKey : undefined });
+      await api.createDeployment(params.id, { commitSha: commitSha || undefined, branch, environment, previewKey: environment !== "production" ? previewKey : undefined });
       setCommitSha("");
       await load();
     } catch (err) {
@@ -156,9 +157,9 @@ export default function Deployments({ params }: { params: { id: string } }) {
        <Card>
          <h2 className="font-semibold">New deployment</h2>
         <form onSubmit={deploy} className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          <select className={`${inputCls} w-full sm:w-36`} value={environment} onChange={(e) => setEnvironment(e.target.value as "production" | "preview")} aria-label="Deployment environment"><option value="production">Production</option><option value="preview">Preview</option></select>
+          <select className={`${inputCls} w-full sm:w-36`} value={environment} onChange={(e) => setEnvironment(e.target.value as "production" | "staging" | "preview")} aria-label="Deployment environment"><option value="production">Production</option><option value="staging">Staging</option><option value="preview">Preview</option></select>
           <input className={`${inputCls} w-full font-mono sm:w-32`} placeholder="branch" value={branch} onChange={(e) => setBranch(e.target.value)} />
-          {environment === "preview" && <input className={`${inputCls} w-full font-mono sm:w-32`} placeholder="preview key" value={previewKey} onChange={(e) => setPreviewKey(e.target.value)} />}
+          {environment !== "production" && <input className={`${inputCls} w-full font-mono sm:w-32`} placeholder="staging key" value={previewKey} onChange={(e) => setPreviewKey(e.target.value)} />}
           <input className={`${inputCls} min-w-0 w-full flex-1 font-mono`} placeholder="commit SHA (optional — latest branch commit is used)" value={commitSha} onChange={(e) => setCommitSha(e.target.value)} />
           <button className={`${btnPrimary} w-full sm:w-auto`} type="submit" disabled={deploying}>
             {deploying ? "Deploying…" : "Deploy"}
@@ -172,7 +173,8 @@ export default function Deployments({ params }: { params: { id: string } }) {
            <input className={`${inputCls} w-full`} type="date" aria-label="From date" value={from} onChange={(e) => setFrom(e.target.value)} />
            <input className={`${inputCls} w-full`} type="date" aria-label="To date" value={to} onChange={(e) => setTo(e.target.value)} />
          </div>
-         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <select className={`${inputCls} w-full sm:w-40`} value={envFilter} onChange={(e) => setEnvFilter(e.target.value as "all" | "production" | "staging" | "preview")} aria-label="Filter by environment"><option value="all">All environments</option><option value="production">Production</option><option value="staging">Staging</option><option value="preview">Preview</option></select>
         {filters.map(([key, label]) => (
           <button
             key={key}
@@ -210,7 +212,7 @@ export default function Deployments({ params }: { params: { id: string } }) {
                    <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
                      {d.branch}
                    </span>
-                  {d.environment === "preview" && <span className="border border-[var(--accent)]/30 bg-[var(--accent-subtle)] px-2 py-0.5 text-xs text-[var(--accent-strong)]">Preview{d.preview_key ? ` · ${d.preview_key}` : ""}</span>}
+                  {d.environment !== "production" && <span className="border border-[var(--accent)]/30 bg-[var(--accent-subtle)] px-2 py-0.5 text-xs text-[var(--accent-strong)]">{d.environment === "staging" ? "Staging" : "Preview"}{d.preview_key ? ` · ${d.preview_key}` : ""}</span>}
                   <StatusBadge status={d.status} />
                   {isCurrent ? (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">
@@ -258,7 +260,7 @@ export default function Deployments({ params }: { params: { id: string } }) {
                       {d.public_url ? "Public ↗" : "Live ↗"}
                     </a>
                    )}
-                   {d.environment === "preview" && d.status === "SUCCESS" && <button className="font-medium text-[var(--accent-strong)] hover:underline" onClick={() => promote(d.id)}>Promote</button>}
+                   {d.environment !== "production" && d.status === "SUCCESS" && <button className="font-medium text-[var(--accent-strong)] hover:underline" onClick={() => promote(d.id)}>Promote</button>}
                    {d.public_url && <span className={`text-xs ${d.public_health_state === "UP" ? "text-green-700 dark:text-green-300" : d.public_health_state === "DOWN" ? "text-red-700 dark:text-red-300" : "text-gray-400"}`}>Public {d.public_health_state || "CHECKING"}</span>}
                   <span className="ml-auto text-xs text-gray-400 sm:hidden" title={d.created_at}>
                     {formatDeploymentTime(d.created_at)}

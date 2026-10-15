@@ -18,8 +18,9 @@ The current frontend stage includes:
 - Deployment history, status filters, redeploy/cancel actions, timelines, and live logs.
 - Client-side GET caching and request deduplication with explicit no-cache handling for secrets and live logs.
 - SSE-driven deployment refresh with polling fallback when a browser cannot keep an event stream.
-- Server-side deployment pagination, commit/branch search, date filters, and status filters.
-- Isolated preview deployments with preview hostnames and explicit promotion to production.
+- Server-side deployment pagination, commit/branch search, date filters, status filters, and environment filters.
+- Isolated staging and preview deployments with separate hostnames/Tailscale URLs and explicit promotion to production.
+- Service-scoped Docker build folders persisted in the `shipyard-builds` volume.
 - GitHub repository picker and signed pull-request preview deployment hooks.
 - Masked environment version history with restore support.
 - Project alert rules with signed HTTPS webhook delivery.
@@ -129,14 +130,14 @@ npm run db:cleanup:logs
 - **Build** (`/projects/:id?tab=build`) - source and runtime configuration including CPU, memory, output directory, and restart policy.
 - **Environment** (`/projects/:id?tab=environment`) - masked secrets, reveal/copy/edit/delete controls, and bulk `KEY=value` import.
 - **Logs** (`/projects/:id?tab=logs`) - persisted deployment logs and live container logs.
-- **Deployments** (`/projects/:id/deployments`) - paginated history, commit/branch search, date/status filters, production or preview targets, current live deployment, redeploy, cancel, promotion, and direct live-site links.
+- **Deployments** (`/projects/:id/deployments`) - paginated history, commit/branch search, date/status/environment filters, production/staging/preview targets, current live deployment, redeploy, cancel, promotion, and direct live-site links.
 - **Deployment detail** (`/projects/:id/deployments/:depId`) - status, metadata, event timeline, rollback, and logs.
 - **Metrics** (`/projects/:id/metrics`) - request totals, error rate, latency charts, deployment summaries, and runtime resources.
 - **Requests** (`/projects/:id/requests`) - method/status/path filters and expandable request metadata.
 - **Domains** (`/projects/:id/domains`) - custom domain registration, verification, and removal.
 - **Shell** (`/projects/:id/shell`) - audited WebSocket shell sessions for running containers.
 
-Preview deployments use a separate hostname such as `preview-service-key-123.shipyard.localhost`, receive only preview-targeted environment variables, and never retire the production instance. A successful preview can be promoted by creating a new production deployment from the same commit.
+Staging and preview deployments use separate hostnames such as `staging-service-key-123.shipyard.localhost`, receive only their own targeted environment variables, and never retire the production instance. A successful staging or preview build can be promoted by creating a new production deployment from the same commit. Worker build checkouts are isolated per service at `services/<service>/deployments/d<id>` inside the persistent `shipyard-builds` Docker volume.
 
 GitHub PR events are accepted at the existing webhook URL after a repository is linked. Supported PR actions create preview deployments for opened, reopened, ready-for-review, and synchronized pull requests when project auto-deploy is enabled.
 
