@@ -20,6 +20,11 @@ The current frontend stage includes:
 - SSE-driven deployment refresh with polling fallback when a browser cannot keep an event stream.
 - Server-side deployment pagination, commit/branch search, date filters, and status filters.
 - Isolated preview deployments with preview hostnames and explicit promotion to production.
+- GitHub repository picker and signed pull-request preview deployment hooks.
+- Masked environment version history with restore support.
+- Project alert rules with signed HTTPS webhook delivery.
+- Configurable database log/event cleanup command.
+- Organization/workspace foundation APIs with automatic workspace bootstrap.
 - Mobile-safe forms, tables, navigation, and page actions.
 
 The backend still requires a reachable MySQL database for authentication and project data. The development compose stack does not seed demo data. If the configured external MySQL host is unavailable, the UI can render but authenticated data requests will fail.
@@ -107,6 +112,14 @@ npm run db:seed:demo
 
 Default demo credentials are `demo@shipyard.local` / `ShipYardDemo123!`. Override them with `DEMO_EMAIL` and `DEMO_PASSWORD` before running the seed command. The seed is idempotent and creates completed sample deployments plus request metadata.
 
+Clean operational logs and deployment events with the configured retention window:
+
+```powershell
+Set-Location backend
+$env:LOG_RETENTION_DAYS = "30"
+npm run db:cleanup:logs
+```
+
 ## Product Surface
 
 - **Overview** (`/`) - fleet health, online services, active deployments, public incidents, recent movement, and attention views.
@@ -124,6 +137,10 @@ Default demo credentials are `demo@shipyard.local` / `ShipYardDemo123!`. Overrid
 - **Shell** (`/projects/:id/shell`) - audited WebSocket shell sessions for running containers.
 
 Preview deployments use a separate hostname such as `preview-service-key-123.shipyard.localhost`, receive only preview-targeted environment variables, and never retire the production instance. A successful preview can be promoted by creating a new production deployment from the same commit.
+
+GitHub PR events are accepted at the existing webhook URL after a repository is linked. Supported PR actions create preview deployments for opened, reopened, ready-for-review, and synchronized pull requests when project auto-deploy is enabled.
+
+Alert rules are available through the project API and deliver signed HTTPS JSON webhooks for deployment success/failure and public health failures.
 
 ## Caching And Freshness
 
@@ -157,6 +174,10 @@ Mutating requests clear the cache. Secret environment reads, deployment events, 
 - `GET /api/projects/:id/container-logs?tail=200` - live container output.
 - `GET /api/projects/:id/events?token=...` - deployment status/log SSE stream.
 - `GET /api/projects/:id/env?includeSecretValues=true` - explicit decrypted secret reveal endpoint.
+- `GET /api/projects/:id/env-history?key=...` - masked environment version history.
+- `POST /api/projects/:id/env/:key/rollback` - restore an environment version.
+- `GET /api/projects/:id/alerts` / `POST /api/projects/:id/alerts` - project alert rules.
+- `GET /api/workspaces` / `POST /api/workspaces` - organization/workspace foundation API.
 - `GET /health` - liveness.
 - `GET /ready` - MySQL and Redis readiness.
 - `GET /metrics` - Prometheus metrics.

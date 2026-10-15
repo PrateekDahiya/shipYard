@@ -8,11 +8,11 @@ const log = require('../utils/logger');
 
 async function receive(req, res) {
   const event = req.headers['x-github-event'];
-  if (event !== 'push') {
+  if (event !== 'push' && event !== 'pull_request') {
     return res.status(200).json({ ignored: true, reason: 'event_not_handled', requestId: req.id });
   }
   try {
-    const result = await webhookService.handlePush({
+    const result = await (event === 'pull_request' ? webhookService.handlePullRequest : webhookService.handlePush)({
       rawBody: req.body,
       signature: req.headers['x-hub-signature-256'],
     });

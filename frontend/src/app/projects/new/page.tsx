@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { Card, PageHeader, ErrorBanner, btnPrimary, inputCls } from "@/components/ui";
@@ -20,6 +20,16 @@ export default function NewProject() {
   const [restartPolicy, setRestartPolicy] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [githubLinked, setGithubLinked] = useState(false);
+  const [githubRepos, setGithubRepos] = useState<{ id: number; full_name: string; default_branch: string | null; private: boolean }[]>([]);
+  const [selectedRepoId, setSelectedRepoId] = useState("");
+
+  useEffect(() => {
+    api.githubStatus().then((status) => {
+      setGithubLinked(status.linked);
+      if (status.linked) api.githubRepos().then((result) => setGithubRepos(result.repos)).catch(() => {});
+    }).catch(() => {});
+  }, []);
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
@@ -44,7 +54,11 @@ export default function NewProject() {
         app_port: parseInt(appPort, 10) || 3000,
         restart_policy: restartPolicy || undefined,
       } as Parameters<typeof api.createProject>[0]);
-      router.push(`/projects/${res.project.id}`);
+       const selectedRepo = githubRepos.find((repo) => String(repo.id) === selectedRepoId);
+       if (selectedRepo) {
+         await api.linkGithubProject(String(res.project.id), { github_repo_id: selectedRepo.id, full_name: selectedRepo.full_name, default_branch: selectedRepo.default_branch });
+       }
+       router.push(`/projects/${res.project.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "create_failed");
       setSaving(false);
@@ -89,10 +103,11 @@ export default function NewProject() {
                   value={repositoryUrl}
                   onChange={(e) => setRepositoryUrl(e.target.value)}
                 />
-                <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+               <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
                   You can also connect GitHub later. HTTPS format works for cloning.
                 </span>
               </label>
+              {githubLinked && githubRepos.length > 0 && <label className="block text-sm"><span className="mb-1 block font-medium text-gray-700 dark:text-gray-300">GitHub repository</span><select className={`${inputCls} w-full font-mono`} value={selectedRepoId} onChange={(e) => { const repo = githubRepos.find((item) => String(item.id) === e.target.value); setSelectedRepoId(e.target.value); if (repo) { setRepositoryUrl(`https://github.com/${repo.full_name}.git`); setBranch(repo.default_branch || "main"); } }}><option value="">Select a linked repository</option>{githubRepos.map((repo) => <option key={repo.id} value={repo.id}>{repo.full_name}{repo.private ? " (private)" : ""}</option>)}</select></label>}
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-gray-700 dark:text-gray-300">
                   Branch

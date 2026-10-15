@@ -10,6 +10,7 @@ const requireProjectAccess = require('../middleware/requireProjectAccess');
 const { rateLimit } = require('../middleware/rateLimit');
 const sse = require('../realtime/sse');
 const { listForProject } = require('../repositories/auditRepo');
+const alertsController = require('../controllers/alerts');
 
 const router = express.Router();
 
@@ -27,8 +28,10 @@ router.patch('/:id', requireProjectAccess, controller.patch);
 router.delete('/:id', requireProjectAccess, controller.remove);
 
 router.get('/:id/env', requireProjectAccess, envController.list);
+router.get('/:id/env-history', requireProjectAccess, envController.history);
 router.post('/:id/env', requireProjectAccess, envController.upsert);
 router.delete('/:id/env/:key', requireProjectAccess, envController.remove);
+router.post('/:id/env/:key/rollback', requireProjectAccess, envController.rollback);
 
 router.post('/:id/github/link', requireProjectAccess, githubController.link);
 router.get('/:id/members', requireProjectAccess, membersController.list);
@@ -42,5 +45,8 @@ router.get('/:id/audit', requireProjectAccess, async (req, res, next) => {
     next(e);
   }
 });
+router.get('/:id/alerts', requireProjectAccess, alertsController.list);
+router.post('/:id/alerts', requireProjectAccess, alertsController.create);
+router.delete('/:id/alerts/:ruleId', requireProjectAccess, alertsController.remove);
 
 module.exports = router;

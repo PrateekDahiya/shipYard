@@ -194,6 +194,10 @@ export const api = {
       `/api/projects/${id}/env${options?.includeSecretValues ? '?includeSecretValues=true' : ''}`,
       options?.includeSecretValues ? { cache: "no-store" } : undefined
     ),
+  envHistory: (id: string, key: string, environment = "production") =>
+    req<{ versions: { id: number; key: string; target_environment: string; is_secret: number; scope: string; version: number; created_by: number | null; created_at: string }[] }>(`/api/projects/${id}/env-history?key=${encodeURIComponent(key)}&environment=${encodeURIComponent(environment)}`),
+  rollbackEnv: (id: string, key: string, version: number, environment = "production") =>
+    req<{ variable: EnvVar }>(`/api/projects/${id}/env/${encodeURIComponent(key)}/rollback`, { method: "POST", body: JSON.stringify({ version, environment }) }),
   upsertEnv: (id: string, v: { key: string; value: string; is_secret?: boolean; scope?: string }) =>
     req<{ variable: EnvVar }>(`/api/projects/${id}/env`, {
       method: "POST",
@@ -204,9 +208,17 @@ export const api = {
       method: "DELETE",
     }),
   audit: (id: string) => req<{ audit: AuditEntry[] }>(`/api/projects/${id}/audit`),
+  listAlerts: (id: string) => req<{ rules: { id: number; project_id: number; event: string; destination_url: string; enabled: number; created_at: string }[] }>(`/api/projects/${id}/alerts`),
+  addAlert: (id: string, rule: { event: string; destination_url: string; secret?: string; enabled?: boolean }) => req<{ rule: { id: number } }>(`/api/projects/${id}/alerts`, { method: "POST", body: JSON.stringify(rule) }),
+  removeAlert: (id: string, ruleId: number) => req<{ ok: boolean }>(`/api/projects/${id}/alerts/${ruleId}`, { method: "DELETE" }),
   githubStatus: () =>
     req<{ linked: boolean; account: { login: string } | null }>("/api/github/status"),
   githubAuthUrl: () => req<{ url: string }>("/api/github/auth-url"),
+  githubRepos: () => req<{ repos: { id: number; full_name: string; default_branch: string | null; private: boolean }[] }>("/api/github/repos"),
+  linkGithubProject: (id: string, repo: { github_repo_id: number; full_name: string; default_branch?: string | null }) =>
+    req<{ repository: unknown }>(`/api/projects/${id}/github/link`, { method: "POST", body: JSON.stringify(repo) }),
+  listWorkspaces: () => req<{ organizations: { id: number; name: string; slug: string; role: string }[] }>("/api/workspaces"),
+  createWorkspace: (name: string) => req<{ organization: { id: number; name: string; slug: string } }>("/api/workspaces", { method: "POST", body: JSON.stringify({ name }) }),
   createDeployment: (id: string, data: { commitSha?: string; branch?: string; environment?: "production" | "preview"; previewKey?: string }) =>
     req<{ deployment: Deployment; queued: boolean }>(`/api/projects/${id}/deployments`, {
       method: "POST",

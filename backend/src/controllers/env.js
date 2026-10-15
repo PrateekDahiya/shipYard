@@ -16,7 +16,7 @@ async function list(req, res, next) {
 async function upsert(req, res, next) {
   try {
     const { key, value, is_secret: isSecret, scope, target_environment: targetEnvironment } = req.body || {};
-    const variable = await envRepo.upsert(req.project.id, { key, value, isSecret: isSecret !== false, scope: scope || 'both', targetEnvironment: targetEnvironment || 'production' });
+    const variable = await envRepo.upsert(req.project.id, { key, value, isSecret: isSecret !== false, scope: scope || 'both', targetEnvironment: targetEnvironment || 'production', createdBy: req.user.id });
     await auditRepo.record({
       userId: req.user.id,
       projectId: req.project.id,
@@ -31,6 +31,26 @@ async function upsert(req, res, next) {
     if (e.message && e.message.includes('DB_ENV_KEY')) {
       return res.status(500).json({ error: 'invalid_db_env_key', requestId: req.id });
     }
+    next(e);
+  }
+}
+
+async function history(req, res, next) {
+  try {
+    const versions = await envRepo.history(req.project.id, req.query.key, req.query.environment || 'production');
+    res.status(200).json({ versions, requestId: req.id });
+  } catch (e) {
+    next(e);
+  }
+}
+
+async function rollback(req, res, next) {
+  try {
+    const variable = await envRepo.rollback(req.project.id, req.params.key, Number.parseInt(req.body && req.body.version, 10), (req.body && req.body.environment) || 'production', req.user.id);
+    await auditRepo.record({ userId: req.user.id, projectId: req.project.id, action: 'environment.rolled_back', metadata: { key: req.params.key, version: req.body && req.body.version } });
+    res.status(200).json({ variable, requestId: req.id });
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message, requestId: req.id });
     next(e);
   }
 }
@@ -53,4 +73,4 @@ async function remove(req, res, next) {
   }
 }
 
-module.exports = { list, upsert, remove };
+module.exports = { list, upsert, history, rollback, remove };

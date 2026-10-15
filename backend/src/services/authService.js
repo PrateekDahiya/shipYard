@@ -28,6 +28,15 @@ async function register({ email, password, name }) {
   }
   const passwordHash = await bcrypt.hash(password, 12);
   const user = await userRepo.create({ email: cleanEmail, passwordHash, name });
+  try {
+    const { getPool } = require('../config/db');
+    const workspaceName = `${user.name || user.email.split('@')[0]}'s workspace`;
+    const slug = `${cleanEmail.split('@')[0].replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${user.id}`;
+    const [organization] = await getPool().query('INSERT INTO organizations (name, slug) VALUES (?, ?)', [workspaceName, slug]);
+    await getPool().query("INSERT INTO organization_members (organization_id, user_id, role) VALUES (?, ?, 'owner')", [organization.insertId, user.id]);
+  } catch (e) {
+    require('../utils/logger').warn('workspace_bootstrap_failed', { userId: user.id, message: e.message });
+  }
   const token = signToken({ sub: user.id, email: user.email });
   return { user: { id: user.id, email: user.email, name: user.name }, token };
 }

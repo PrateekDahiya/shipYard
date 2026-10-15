@@ -14,6 +14,7 @@ const webhookRoutes = require('./routes/webhooks');
 const observabilityRoutes = require('./routes/observability');
 const shellRoutes = require('./routes/shell');
 const domainRoutes = require('./routes/domains');
+const workspaceRoutes = require('./routes/workspaces');
 const { httpMetrics, register } = require('./monitoring/prometheus');
 const { requestLogger } = require('./middleware/requestLog');
 
@@ -44,6 +45,7 @@ function createApp() {
   app.use('/api', observabilityRoutes);
   app.use('/api', shellRoutes);
   app.use('/api', domainRoutes);
+  app.use('/api/workspaces', workspaceRoutes);
   app.use((req, res) => {
     res.status(404).json({ error: 'not_found', requestId: req.id });
   });

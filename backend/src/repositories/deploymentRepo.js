@@ -147,6 +147,9 @@ async function transition(id, to, message) {
       bus.publish({ type: 'DEPLOYMENT_STATUS', projectId: updated.project_id, deploymentId: id, data: { status: to, message: message || null } });
       if (isTerminal(to)) {
         metrics.deploymentOutcomes.inc({ status: to });
+        const alertService = require('../services/alertService');
+        const event = to.includes('FAILED') ? 'deployment_failed' : 'deployment_succeeded';
+        void alertService.notify(updated.project_id, event, { deploymentId: id, status: to, message: message || null });
       }
       require('../utils/logger').info('deployment_transition', { deploymentId: id, projectId: updated.project_id, from, to });
     } catch {

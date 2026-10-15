@@ -101,4 +101,75 @@ async function handlePush({ rawBody, signature }) {
   }
 }
 
-module.exports = { verifySignature, handlePush, findLiveDeployment, NON_TERMINAL };
+async function handlePullRequest({ rawBody, signature }) {
+  let payload;
+  try {
+    payload = JSON.parse(rawBody.toString('utf8'));
+  } catch {
+    const err = new Error('invalid_payload');
+    err.status = 400;
+    throw err;
+  }
+  const action = payload.action;
+  if (!['opened', 'synchronize', 'reopened', 'ready_for_review'].includes(action)) {
+    return { ignored: true, reason: 'pr_action_not_handled', action };
+  }
+  const pr = payload.pull_request || {};
+  const githubRepoId = payload.repository && payload.repository.id;
+  const sha = pr.head && pr.head.sha;
+  const number = pr.number;
+  if (!githubRepoId || !sha || !number) {
+    const err = new Error('invalid_payload');
+    err.status = 400;
+    throw err;
+  }
+  const link = await findRepository(githubRepoId);
+  if (!link) {
+    return { ignored: true, reason: 'unknown_repository' };
+  }
+  if (!verifySignature(rawBody, signature, link.webhook_secret)) {
+    const err = new Error('invalid_signature');
+    err.status = 401;
+    throw err;
+  }
+  const [projects] = await getPool().query('SELECT * FROM projects WHERE id = ? LIMIT 1', [link.project_id]);
+  const project = projects[0];
+  if (!project) {
+    return { ignored: true, reason: 'unknown_project' };
+  }
+  if (!project.auto_deploy) {
+    return { skipped: true, reason: 'auto_deploy_disabled' };
+  }
+  if (pr.draft) {
+    return { skipped: true, reason: 'pr_draft' };
+  }
+  const branch = (pr.head && pr.head.ref) || project.branch;
+  const previewKey = `pr-${number}`;
+  const lockName = `shipyard:webhook:${project.id}:${sha}`.slice(0, 64);
+  const [[lockRow]] = await getPool().query('SELECT GET_LOCK(?, 10) AS acquired', [lockName]);
+  if (!lockRow || lockRow.acquired !== 1) {
+    const err = new Error('webhook_busy_retry');
+    err.status = 409;
+    throw err;
+  }
+  try {
+    const existing = await findLiveDeployment(project.id, sha);
+    if (existing) {
+      return { duplicate: true, deployment: existing };
+    }
+    const { deployment, queued } = await deploymentService.createDeployment(null, project.id, {
+      commitSha: sha,
+      branch,
+      commitMessage: pr.title || null,
+      commitAuthor: (pr.user && pr.user.login) || null,
+      triggerType: 'webhook',
+      environment: 'preview',
+      previewKey,
+    });
+    return { deployment, queued, preview: true };
+  } finally {
+    await getPool().query('SELECT RELEASE_LOCK(?)', [lockName]).catch(() => {});
+  }
+}
+
+module.exports = { verifySignature, handlePush, handlePullRequest, findLiveDeployment, NON_TERMINAL };

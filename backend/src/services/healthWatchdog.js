@@ -31,7 +31,7 @@ function logger() {
 
 async function listWatched(pool) {
   const [rows] = await pool.query(
-    `SELECT i.id AS instance_id, i.container_id, i.state, i.deployment_id,
+   `SELECT i.id AS instance_id, i.project_id, i.container_id, i.state, i.deployment_id,
             i.public_health_state,
             d.app_port AS dep_port, p.app_port AS project_port,
             p.healthcheck_path, p.deploy_type, d.public_url
@@ -75,6 +75,7 @@ async function checkPublic(pool, health, row, publicFails, threshold) {
   if (count >= threshold && row.public_health_state !== 'DOWN') {
     await pool.query('INSERT INTO deployment_events (deployment_id, stage, status, message) VALUES (?, ?, ?, ?)', [row.deployment_id, 'PUBLIC_HEALTH', 'DOWN', `public URL failed ${count} consecutive probes`]);
     logger().warn('public_watchdog_unhealthy', { instanceId: row.instance_id, deploymentId: row.deployment_id, failures: count, url: row.public_url });
+    void require('./alertService').notify(row.project_id, 'public_unhealthy', { deploymentId: row.deployment_id, url: row.public_url, failures: count });
   }
 }
 

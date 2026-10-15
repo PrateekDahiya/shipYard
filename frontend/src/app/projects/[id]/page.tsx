@@ -74,6 +74,8 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
   const [editValue, setEditValue] = useState("");
   const [showEditValue, setShowEditValue] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [historyKey, setHistoryKey] = useState<string | null>(null);
+  const [history, setHistory] = useState<{ id: number; version: number; scope: string; created_at: string }[]>([]);
 
   async function load() {
     // Core data — a failure here is page-level (usually auth or missing project).
@@ -193,6 +195,26 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
       setTimeout(() => setCopiedKey((prev) => (prev === envKey ? null : prev)), 1500);
     } catch (e) {
       setError(e instanceof Error ? e.message : "copy_failed");
+    }
+  }
+
+  async function showHistory(envKey: string) {
+    try {
+      setHistoryKey(envKey);
+      setHistory((await api.envHistory(params.id, envKey)).versions);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "env_history_failed");
+    }
+  }
+
+  async function rollbackVersion(version: number) {
+    if (!historyKey || !window.confirm(`Restore ${historyKey} version ${version}?`)) return;
+    try {
+      await api.rollbackEnv(params.id, historyKey, version);
+      setHistoryKey(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "env_rollback_failed");
     }
   }
 
@@ -541,8 +563,9 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
                           {copiedKey === v.key ? "Copied" : "Copy"}
                         </button>
                       )}
-                      <button className={`${btnSecondary} !px-2.5 !py-1.5 !text-xs`} onClick={() => startEdit(v.key)}>Edit</button>
-                      <button className="px-1 text-xs font-medium text-red-600 dark:text-red-400" onClick={() => api.deleteEnv(params.id, v.key).then(load).catch((e) => setError(e.message))}>Delete</button>
+                       <button className={`${btnSecondary} !px-2.5 !py-1.5 !text-xs`} onClick={() => startEdit(v.key)}>Edit</button>
+                       <button className={`${btnSecondary} !px-2.5 !py-1.5 !text-xs`} onClick={() => showHistory(v.key)}>History</button>
+                       <button className="px-1 text-xs font-medium text-red-600 dark:text-red-400" onClick={() => api.deleteEnv(params.id, v.key).then(load).catch((e) => setError(e.message))}>Delete</button>
                     </div>
                   </>
                 )}
@@ -553,6 +576,8 @@ export default function ProjectDetail({ params }: { params: { id: string } }) {
         </ul>
       </Card>
       )}
+
+      {historyKey && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true"><div className="w-full max-w-md border border-[var(--border)] bg-[var(--surface)] p-5"><div className="flex items-center justify-between"><h2 className="font-semibold">{historyKey} history</h2><button className={btnSecondary} onClick={() => setHistoryKey(null)}>Close</button></div><ul className="mt-4 divide-y divide-[var(--border)]">{history.map((item) => <li key={item.id} className="flex items-center justify-between gap-3 py-3 text-sm"><span>Version {item.version}<span className="ml-2 text-xs text-[var(--muted)]">{item.created_at}</span></span><button className={btnSecondary} onClick={() => rollbackVersion(item.version)}>Restore</button></li>)}{history.length === 0 && <Empty text="No previous versions." />}</ul></div></div>}
 
       {tab === "logs" && (
       <>

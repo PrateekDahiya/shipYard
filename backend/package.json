@@ -10,7 +10,8 @@
     "test": "jest --runInBand --forceExit",
     "lint": "eslint src tests",
     "db:migrate": "node src/config/migrate.js",
-    "db:seed:demo": "node scripts/seed-demo.js"
+    "db:seed:demo": "node scripts/seed-demo.js",
+    "db:cleanup:logs": "node scripts/cleanup-logs.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
