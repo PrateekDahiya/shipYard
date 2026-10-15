@@ -19,6 +19,17 @@ function activeLink(href: string, pathname: string) {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function breadcrumbs(pathname: string) {
+  const parts = pathname.split("/").filter(Boolean);
+  const items = [{ label: "Workspace", href: "/" }];
+  let href = "";
+  for (const part of parts) {
+    href += `/${part}`;
+    items.push({ label: part.replace(/-/g, " "), href });
+  }
+  return items;
+}
+
 function Brand({ dark = false }: { dark?: boolean }) {
   return <Link href="/" className="group flex items-center gap-2.5" aria-label="ShipYard home">
     <span className={`flex h-7 w-7 items-center justify-center border ${dark ? "border-white/20 bg-white text-[#182230]" : "border-[var(--border-strong)] bg-[var(--foreground)] text-white"}`}><span className="h-2.5 w-2.5 border-2 border-current" /></span>
@@ -76,8 +87,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     return <div className="min-h-screen overflow-x-hidden bg-[var(--background)] text-[var(--foreground)]"><div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 py-6 sm:px-8"><Brand/><main className="flex w-full min-w-0 flex-1 items-center justify-center py-10">{children}</main></div></div>;
   }
 
-  const pathParts = pathname.split("/").filter(Boolean);
-  const contextLabel = pathParts.length === 0 ? "Overview" : pathParts.map((part) => part.replace(/-/g, " ")).join(" / ");
+  const breadcrumbItems = breadcrumbs(pathname);
   const navigation = <nav className="space-y-0.5" aria-label="Workspace navigation">{LINKS.map((link) => {
     const active = activeLink(link.href, pathname);
     return <Link key={link.href} href={link.href} onClick={() => setMobileOpen(false)} aria-current={active ? "page" : undefined} className={`flex items-center gap-2.5 border-l-2 px-3 py-2 text-[13px] transition ${active ? "border-white bg-white/10 text-white" : "border-transparent text-white/60 hover:bg-white/[0.06] hover:text-white"}`}><span className={`h-1.5 w-1.5 ${active ? "bg-[#6f9bb3]" : "bg-white/25"}`} /><span>{link.label}</span></Link>;
@@ -101,7 +111,12 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--background)]/95 backdrop-blur-xl">
           <div className="flex h-14 items-center gap-3 px-5 sm:px-7 lg:px-9">
             <div className="lg:hidden"><button type="button" onClick={() => setMobileOpen((open) => !open)} aria-label="Toggle navigation" aria-expanded={mobileOpen} className="border border-[var(--border-strong)] px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide">Menu</button></div>
-            <div className="hidden items-center gap-2 text-xs text-[var(--muted)] sm:flex"><span>Workspace</span><span className="text-[var(--subtle)]">/</span><span className="font-medium capitalize text-[var(--foreground)]">{contextLabel}</span></div>
+            <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto whitespace-nowrap text-[11px] text-[var(--muted)] sm:text-xs">
+              {breadcrumbItems.map((item, index) => {
+                const current = index === breadcrumbItems.length - 1;
+                return <span key={item.href} className="flex shrink-0 items-center gap-2"><span className="text-[var(--subtle)]">{index > 0 ? "/" : ""}</span>{current ? <span aria-current="page" className="font-medium capitalize text-[var(--foreground)]">{item.label}</span> : <Link href={item.href} className="capitalize hover:text-[var(--foreground)]">{item.label}</Link>}</span>;
+              })}
+            </nav>
             <div className="ml-auto flex min-w-0 items-center gap-2"><button type="button" onClick={() => setJumpOpen(true)} className="flex min-w-0 items-center gap-3 border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-left text-xs text-[var(--muted)] hover:border-[var(--border-strong)]"><span className="hidden sm:inline">Jump to service</span><span className="sm:hidden">Search</span><kbd className="hidden border border-[var(--border)] px-1.5 py-0.5 font-mono text-[9px] text-[var(--subtle)] sm:inline">⌘ K</kbd></button><span className="hidden sm:block"><ThemeToggle/></span>{loggedIn ? <button onClick={logout} className="hidden px-2 py-1.5 text-xs font-medium text-[var(--muted)] hover:text-[var(--foreground)] sm:block">Sign out</button> : <Link href="/login" className="hidden px-2 py-1.5 text-xs font-medium text-[var(--muted)] hover:text-[var(--foreground)] sm:block">Sign in</Link>}</div>
           </div>
           {mobileOpen && <div className="border-t border-white/10 bg-[#182230] px-4 py-4">{navigation}<button type="button" onClick={() => { setMobileOpen(false); setJumpOpen(true); }} className="mt-3 w-full border border-white/15 px-3 py-2 text-left text-xs text-white/60">Find a service <span className="float-right font-mono">⌘ K</span></button></div>}

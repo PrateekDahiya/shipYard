@@ -34,3 +34,13 @@ test("project sub-pages keep navigation usable on mobile", async ({ page, isMobi
   await expect(page.getByRole("heading", { name: "Deployments" })).toBeVisible();
   await expectNoHorizontalOverflow(page);
 });
+
+test("global breadcrumbs link each route segment", async ({ page }) => {
+  await page.goto("/projects/2/deployments/135");
+  const breadcrumb = page.getByRole("navigation", { name: "Breadcrumb" });
+  await expect(breadcrumb.getByRole("link", { name: "Workspace" })).toHaveAttribute("href", "/");
+  await expect(breadcrumb.getByRole("link", { name: "projects" })).toHaveAttribute("href", "/projects");
+  await expect(breadcrumb.getByRole("link", { name: "2" })).toHaveAttribute("href", "/projects/2");
+  await expect(breadcrumb.getByRole("link", { name: "deployments" })).toHaveAttribute("href", "/projects/2/deployments");
+  await expect(breadcrumb.getByText("135", { exact: true })).toHaveAttribute("aria-current", "page");
+});
